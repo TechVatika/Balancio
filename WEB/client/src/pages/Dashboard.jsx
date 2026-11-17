@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { formatRupee, paiseToAmount, toPaise } from "../../../shared/money.js";
 import { formatDisplayDate, monthName } from "../../../shared/statement.js";
@@ -107,7 +107,15 @@ export function Dashboard() {
 
       <section className="panel">
         <header className="panel-head">
-          <h2>{monthName(data.today.month)} balance trend</h2>
+          <div>
+            <h2>{monthName(data.today.month)} cashflow</h2>
+            <p className="muted chart-subhead">Running balance, money in, and money out across the month</p>
+          </div>
+          <p className="legend chart-legend">
+            <span className="swatch balance">Balance</span>
+            <span className="swatch credit">In</span>
+            <span className="swatch debit">Out</span>
+          </p>
         </header>
         <MonthTrendChart
           rows={data.month.rows}
@@ -180,36 +188,210 @@ function movement(current, previous) {
   return delta > 0 ? `is ${amount} more than` : `is ${amount} less than`;
 }
 
-function MonthTrendChart({ rows, broughtForward, year, month }) {
-  if (!rows || !rows.length) return <p className="muted">This month’s running balance will appear here once you add an entry.</p>;
+function niceScale(min, max, ticks = 4) {
+  const padMin = Math.min(min, 0);
+  const padMax = Math.max(max, 0);
+  if (padMin === padMax) return { min: padMin - 100, max: padMax + 100, ticks: [padMin - 100, 0, padMax + 100] };
+  const rawSpan = padMax - padMin;
+  const rough = rawSpan / Math.max(ticks - 1, 1);
+  const pow = 10 ** Math.floor(Math.log10(Math.abs(rough) || 1));
+  const niceStep = [1, 2, 2.5, 5, 10].map((n) => n * pow).find((n) => n >= rough) || rough;
+  const niceMin = Math.floor(padMin / niceStep) * niceStep;
+  const niceMax = Math.ceil(padMax / niceStep) * niceStep;
+  const values = [];
+  for (let value = niceMin; value <= niceMax + niceStep / 2; value += niceStep) values.push(value);
+  return { min: niceMin, max: niceMax, ticks: values };
+}
 
-  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  const points = [{ day: 1, balance: toPaise(broughtForward) ?? 0 }];
-  for (const row of rows) {
-    points.push({ day: Number(row.date.slice(8, 10)), balance: toPaise(row.balance) ?? 0 });
+function compactRupee(paise) {
+  const rupees = (paise ?? 0) / 100;
+  const abs = Math.abs(rupees);
+  const sign = rupees < 0 ? "−" : "";
+  if (abs >= 10000000) return `${sign}${(abs / 10000000).toFixed(abs >= 100000000 ? 0 : 1)}Cr`;
+  if (abs >= 100000) return `${sign}${(abs / 100000).toFixed(abs >= 1000000 ? 0 : 1)}L`;
+  if (abs >= 1000) return `${sign}${(abs / 1000).toFixed(abs >= 10000 ? 0 : 1)}k`;
+  return `${sign}${Math.round(abs)}`;
+}
+
+function buildSeriesPath(points, key, toX, toY) {
+  return points
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${toX(point.day).toFixed(1)} ${toY(point[key]).toFixed(1)}`)
+    .join(" ");
+}
+
+function MonthTrendChart({ rows, broughtForward, year, month }) {
+  const [hover, setHover] = useState(null);
+
+  const chart = useMemo(() => {
+    if (!rows?.length) return null;
+
+    const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    let creditPaise = 0;
+    let debitPaise = 0;
+    const points = [{
+      day: 1,
+      balance: toPaise(broughtForward) ?? 0,
+      credit: 0,
+      debit: 0,
+      label: formatDisplayDate(`${year}-${String(month).padStart(2, "0")}-01`),
+      description: "Brought forward",
+      entryCredit: "0.00",
+      entryDebit: "0.00",
+    }];
+
+    for (const row of rows) {
+      creditPaise += toPaise(row.credit) ?? 0;
+      debitPaise += toPaise(row.debit) ?? 0;
+      points.push({
+        day: Number(row.date.slice(8, 10)),
+        balance: toPaise(row.balance) ?? 0,
+        credit: creditPaise,
+        debit: debitPaise,
+        label: formatDisplayDate(row.date),
+        description: row.description,
+        entryCredit: row.credit,
+        entryDebit: row.debit,
+      });
+    }
+
+    const values = points.flatMap((point) => [point.balance, point.credit, point.debit]);
+    const scale = niceScale(Math.min(...values), Math.max(...values), 5);
+    const width = 720;
+    const height = 280;
+    const margin = { top: 16, right: 18, bottom: 36, left: 58 };
+    const plotW = width - margin.left - margin.right;
+    const plotH = height - margin.top - margin.bottom;
+    const span = scale.max - scale.min || 1;
+    const toX = (day) => margin.left + ((day - 1) / Math.max(daysInMonth - 1, 1)) * plotW;
+    const toY = (value) => margin.top + plotH - ((value - scale.min) / span) * plotH;
+    const dayTicks = [];
+    const step = daysInMonth <= 14 ? 2 : daysInMonth <= 21 ? 3 : 5;
+    for (let day = 1; day <= daysInMonth; day += step) dayTicks.push(day);
+    if (dayTicks[dayTicks.length - 1] !== daysInMonth) dayTicks.push(daysInMonth);
+
+    return {
+      points,
+      scale,
+      width,
+      height,
+      margin,
+      plotW,
+      plotH,
+      toX,
+      toY,
+      dayTicks,
+      daysInMonth,
+      balancePath: buildSeriesPath(points, "balance", toX, toY),
+      creditPath: buildSeriesPath(points, "credit", toX, toY),
+      debitPath: buildSeriesPath(points, "debit", toX, toY),
+      areaPath: `${buildSeriesPath(points, "balance", toX, toY)} L ${toX(points[points.length - 1].day).toFixed(1)} ${toY(0).toFixed(1)} L ${toX(points[0].day).toFixed(1)} ${toY(0).toFixed(1)} Z`,
+    };
+  }, [rows, broughtForward, year, month]);
+
+  if (!chart) return <p className="muted">This month’s cashflow will appear here once you add an entry.</p>;
+
+  const {
+    points, scale, width, height, margin, plotW, plotH, toX, toY, dayTicks,
+    balancePath, creditPath, debitPath, areaPath,
+  } = chart;
+  const active = hover == null ? null : points[Math.max(0, Math.min(points.length - 1, hover))];
+
+  function onMove(event) {
+    const svg = event.currentTarget;
+    const rect = svg.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * width;
+    let best = 0;
+    let bestDist = Infinity;
+    points.forEach((point, index) => {
+      const dist = Math.abs(toX(point.day) - x);
+      if (dist < bestDist) {
+        best = index;
+        bestDist = dist;
+      }
+    });
+    setHover(best);
   }
 
-  const values = points.map((point) => point.balance);
-  const min = Math.min(...values, 0);
-  const max = Math.max(...values, 0);
-  const span = max - min || 1;
-  const width = 600;
-  const height = 160;
-  const pad = 10;
-  const toX = (day) => pad + ((day - 1) / Math.max(daysInMonth - 1, 1)) * (width - pad * 2);
-  const toY = (value) => height - pad - ((value - min) / span) * (height - pad * 2);
-  const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${toX(point.day).toFixed(1)} ${toY(point.balance).toFixed(1)}`).join(" ");
-  const last = points[points.length - 1];
-  const negative = last.balance < 0;
-
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="trend-chart" role="img" aria-label={`Running balance across ${monthName(month)}`}>
-      {min < 0 && max > 0 && (
-        <line x1={pad} x2={width - pad} y1={toY(0)} y2={toY(0)} className="trend-zero" />
+    <div className="trend-wrap">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="trend-chart detailed"
+        role="img"
+        aria-label={`Balance, money in, and money out across ${monthName(month)}`}
+        onMouseMove={onMove}
+        onMouseLeave={() => setHover(null)}
+      >
+        {scale.ticks.map((tick) => (
+          <g key={`y-${tick}`}>
+            <line
+              x1={margin.left}
+              x2={margin.left + plotW}
+              y1={toY(tick)}
+              y2={toY(tick)}
+              className={tick === 0 ? "trend-zero" : "trend-grid"}
+            />
+            <text x={margin.left - 10} y={toY(tick) + 4} className="trend-axis" textAnchor="end">
+              {compactRupee(tick)}
+            </text>
+          </g>
+        ))}
+
+        {dayTicks.map((day) => (
+          <text key={`x-${day}`} x={toX(day)} y={height - 12} className="trend-axis" textAnchor="middle">
+            {day}
+          </text>
+        ))}
+
+        <path d={areaPath} className="trend-area" />
+        <path d={creditPath} className="trend-line credit" fill="none" />
+        <path d={debitPath} className="trend-line debit" fill="none" />
+        <path d={balancePath} className="trend-line balance" fill="none" />
+
+        {points.map((point, index) => (
+          <g key={`pts-${index}`}>
+            <circle cx={toX(point.day)} cy={toY(point.credit)} r="3" className="trend-dot credit" />
+            <circle cx={toX(point.day)} cy={toY(point.debit)} r="3" className="trend-dot debit" />
+            <circle cx={toX(point.day)} cy={toY(point.balance)} r="3.5" className="trend-dot balance" />
+          </g>
+        ))}
+
+        {active && (
+          <g className="trend-hover">
+            <line
+              x1={toX(active.day)}
+              x2={toX(active.day)}
+              y1={margin.top}
+              y2={margin.top + plotH}
+              className="trend-crosshair"
+            />
+            <circle cx={toX(active.day)} cy={toY(active.balance)} r="5.5" className="trend-dot balance active" />
+            <circle cx={toX(active.day)} cy={toY(active.credit)} r="5" className="trend-dot credit active" />
+            <circle cx={toX(active.day)} cy={toY(active.debit)} r="5" className="trend-dot debit active" />
+          </g>
+        )}
+      </svg>
+
+      {active && (
+        <aside className="trend-tooltip" aria-live="polite">
+          <p className="trend-tooltip-date">{active.label}</p>
+          <p className="trend-tooltip-desc">{active.description}</p>
+          <dl>
+            <div><dt>Balance</dt><dd className={active.balance < 0 ? "debit" : "credit"}>{formatRupee(paiseToAmount(active.balance))}</dd></div>
+            <div><dt>In (cum.)</dt><dd className="credit">{formatRupee(paiseToAmount(active.credit))}</dd></div>
+            <div><dt>Out (cum.)</dt><dd className="debit">{formatRupee(paiseToAmount(active.debit))}</dd></div>
+            {(active.entryCredit !== "0.00" || active.entryDebit !== "0.00") && (
+              <div>
+                <dt>This entry</dt>
+                <dd className={active.entryCredit !== "0.00" ? "credit" : "debit"}>
+                  {active.entryCredit !== "0.00" ? formatRupee(active.entryCredit) : `−${formatRupee(active.entryDebit)}`}
+                </dd>
+              </div>
+            )}
+          </dl>
+        </aside>
       )}
-      <path d={path} className={negative ? "trend-line debit" : "trend-line"} fill="none" />
-      <circle cx={toX(last.day)} cy={toY(last.balance)} r="4" className={negative ? "trend-dot debit" : "trend-dot"} />
-    </svg>
+    </div>
   );
 }
 

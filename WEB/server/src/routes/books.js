@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getDb } from "../db.js";
+import { log } from "../logger.js";
 import { paiseToAmount, toPaise } from "../../../shared/money.js";
 
 function httpError(status, message) {
@@ -49,6 +50,14 @@ export function booksRouter() {
     const name = assertName(req.body?.name);
     try {
       const [result] = await req.db.query("INSERT INTO books (name) VALUES (?)", [name]);
+      log({
+        level: "info",
+        category: "book",
+        action: "create",
+        message: `Created book “${name}”.`,
+        req,
+        meta: { bookId: result.insertId, name },
+      });
       res.status(201).json({ id: result.insertId, name, openingBalance: "0.00", entryCount: 0 });
     } catch (error) {
       if (error.code === "ER_DUP_ENTRY") throw httpError(409, "A book with that name already exists.");
@@ -63,6 +72,14 @@ export function booksRouter() {
     try {
       const [result] = await req.db.query("UPDATE books SET name = ? WHERE id = ?", [name, id]);
       if (result.affectedRows === 0) throw httpError(404, "That book could not be found.");
+      log({
+        level: "info",
+        category: "book",
+        action: "rename",
+        message: `Renamed book #${id} to “${name}”.`,
+        req,
+        meta: { bookId: id, name },
+      });
       res.json({ id, name });
     } catch (error) {
       if (error.code === "ER_DUP_ENTRY") throw httpError(409, "A book with that name already exists.");
@@ -77,8 +94,17 @@ export function booksRouter() {
     if (total <= 1) throw httpError(400, "Keep at least one book.");
     const [[{ count }]] = await req.db.query("SELECT COUNT(*) AS count FROM transactions WHERE book_id = ?", [id]);
     if (count > 0) throw httpError(400, "This book still has entries in it. Move or delete them first.");
+    const [[book]] = await req.db.query("SELECT name FROM books WHERE id = ?", [id]);
     const [result] = await req.db.query("DELETE FROM books WHERE id = ?", [id]);
     if (result.affectedRows === 0) throw httpError(404, "That book could not be found.");
+    log({
+      level: "warn",
+      category: "book",
+      action: "delete",
+      message: `Deleted book “${book?.name ?? id}”.`,
+      req,
+      meta: { bookId: id, name: book?.name ?? null },
+    });
     res.json({ ok: true });
   }));
 

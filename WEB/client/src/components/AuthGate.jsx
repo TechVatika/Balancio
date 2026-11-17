@@ -71,14 +71,18 @@ function LoginScreen() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [locked, setLocked] = useState(false);
 
   async function onSubmit(event) {
     event.preventDefault();
+    if (locked) return;
     setSaving(true);
     setError("");
     try {
       await login(password);
     } catch (err) {
+      const cooldown = /30.minute|Wait \d+ minute/i.test(err.message);
+      setLocked(cooldown);
       setError(err.message);
       setSaving(false);
     }
@@ -91,10 +95,20 @@ function LoginScreen() {
         <h1>Sign in</h1>
         <label className="field">
           <span>Password</span>
-          <input type="password" autoFocus value={password} onChange={(event) => setPassword(event.target.value)} placeholder="••••••••" required />
+          <input
+            type="password"
+            autoFocus
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="••••••••"
+            required
+            disabled={locked || saving}
+          />
         </label>
         {error && <p className="form-error">{error}</p>}
-        <button type="submit" className="btn" disabled={saving}>{saving ? "Signing in…" : "Sign in"}</button>
+        <button type="submit" className="btn" disabled={saving || locked}>
+          {locked ? "Cooldown active" : saving ? "Signing in…" : "Sign in"}
+        </button>
       </form>
     </div>
   );

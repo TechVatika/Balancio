@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getDb } from "../db.js";
 import { decryptField, encryptField } from "../crypto.js";
+import { log } from "../logger.js";
 import { paiseToAmount, toPaise, toUnsignedPaise } from "../../../shared/money.js";
 import { fyBounds, fyLabel, fyStartFromIso, monthName, parseDate } from "../../../shared/statement.js";
 
@@ -376,6 +377,14 @@ export function ledgerRouter() {
     const amount = paiseToAmount(paise);
     const [result] = await req.db.query("UPDATE books SET opening_balance = ? WHERE id = ?", [amount, bookId]);
     if (result.affectedRows === 0) throw httpError(404, "That book could not be found.");
+    log({
+      level: "info",
+      category: "ledger",
+      action: "opening.update",
+      message: `Opening balance set to ${amount} for book #${bookId}.`,
+      req,
+      meta: { bookId, openingBalance: amount },
+    });
     res.json({ openingBalance: amount });
   }));
 
@@ -388,6 +397,20 @@ export function ledgerRouter() {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [bookId, entry.date, sealed.ciphertext, sealed.iv, sealed.tag, sealed.keyDate, entry.credit, entry.debit],
     );
+    log({
+      level: "info",
+      category: "ledger",
+      action: "entry.create",
+      message: `Added entry #${result.insertId} on ${entry.date}.`,
+      req,
+      meta: {
+        bookId,
+        entryId: result.insertId,
+        date: entry.date,
+        credit: entry.credit,
+        debit: entry.debit,
+      },
+    });
     res.status(201).json({ id: result.insertId, ...entry });
   }));
 
@@ -417,6 +440,14 @@ export function ledgerRouter() {
     } finally {
       connection.release();
     }
+    log({
+      level: "info",
+      category: "ledger",
+      action: "entry.bulk",
+      message: `Pasted ${clean.length} entries into book #${bookId}.`,
+      req,
+      meta: { bookId, added: clean.length },
+    });
     res.status(201).json({ added: clean.length });
   }));
 
@@ -432,6 +463,14 @@ export function ledgerRouter() {
       [entry.date, sealed.ciphertext, sealed.iv, sealed.tag, sealed.keyDate, entry.credit, entry.debit, id],
     );
     if (result.affectedRows === 0) throw httpError(404, "That entry is no longer in the book.");
+    log({
+      level: "info",
+      category: "ledger",
+      action: "entry.update",
+      message: `Updated entry #${id} (${entry.date}).`,
+      req,
+      meta: { entryId: id, date: entry.date, credit: entry.credit, debit: entry.debit },
+    });
     res.json({ id, ...entry });
   }));
 
@@ -440,6 +479,14 @@ export function ledgerRouter() {
     if (!Number.isInteger(id) || id <= 0) throw httpError(400, "That entry could not be found.");
     const [result] = await req.db.query("DELETE FROM transactions WHERE id = ?", [id]);
     if (result.affectedRows === 0) throw httpError(404, "That entry is no longer in the book.");
+    log({
+      level: "warn",
+      category: "ledger",
+      action: "entry.delete",
+      message: `Deleted entry #${id}.`,
+      req,
+      meta: { entryId: id },
+    });
     res.json({ ok: true });
   }));
 

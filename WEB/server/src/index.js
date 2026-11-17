@@ -10,7 +10,9 @@ import { databaseErrorMessage, dropDb, isDatabaseError } from "./db.js";
 import { ledgerRouter } from "./routes/ledger.js";
 import { securityRouter } from "./routes/security.js";
 import { booksRouter } from "./routes/books.js";
+import { logsRouter } from "./routes/logs.js";
 import { authRouter, requireAuth } from "./auth.js";
+import { log, writeLog } from "./logger.js";
 
 const app = express();
 // No trust-proxy setting: this server isn't behind a reverse proxy by default, and trusting
@@ -36,6 +38,7 @@ app.use("/api", rateLimit({
 app.use("/api/auth", authRouter());
 app.use("/api/security", requireAuth, securityRouter());
 app.use("/api/books", requireAuth, booksRouter());
+app.use("/api/logs", requireAuth, logsRouter());
 app.use("/api", requireAuth, ledgerRouter());
 
 const clientDist = fileURLToPath(new URL("../../client/dist", import.meta.url));
@@ -60,10 +63,29 @@ app.use((error, req, res, next) => {
     : error.message || "Something went wrong.";
   if (databaseDown) console.error(message);
   else if (status >= 500) console.error(error);
-  res.status(status).json({ error: message });
+  if (status >= 500 || databaseDown) {
+    log({
+      level: "error",
+      category: "system",
+      action: databaseDown ? "db.error" : "request.error",
+      message,
+      req,
+      meta: { status, path: req.path, method: req.method },
+    });
+  }
+  if (error.retryAfter) res.set("Retry-After", String(error.retryAfter));
+  const payload = { error: message };
+  if (error.retryAfter) payload.retryAfter = error.retryAfter;
+  res.status(status).json(payload);
 });
 
 const port = Number(process.env.PORT || 4000);
 app.listen(port, "127.0.0.1", () => {
   console.log(`Balancio API  http://127.0.0.1:${port}`);
+  writeLog({
+    level: "info",
+    category: "system",
+    action: "server.start",
+    message: `API listening on 127.0.0.1:${port}`,
+  }).catch(() => {});
 });

@@ -5,13 +5,13 @@ import { formatDisplayDate } from "../../shared/statement.js";
 import { logoDataUrl, reportFileName, rupee, saveFile } from "./reportDownload.js";
 
 const FONT = "SourceSans";
-const GUJARATI_FONT = "NotoGujarati";
+const GUJARATI_FONT = "NotoSerifGujarati";
 const FACES = [
   ["SourceSans3-Regular.ttf", FONT, "normal"],
   ["SourceSans3-Bold.ttf", FONT, "bold"],
   ["SourceSans3-It.ttf", FONT, "italic"],
-  ["NotoSansGujarati-Regular.ttf", GUJARATI_FONT, "normal"],
-  ["NotoSansGujarati-Bold.ttf", GUJARATI_FONT, "bold"],
+  ["NotoSerifGujarati-Regular.ttf", GUJARATI_FONT, "normal"],
+  ["NotoSerifGujarati-Bold.ttf", GUJARATI_FONT, "bold"],
 ];
 const fontCache = new Map();
 const GUJARATI_PATTERN = /[઀-૿]/;

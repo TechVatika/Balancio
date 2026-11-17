@@ -1,3 +1,4 @@
+import { useEffect, useId, useRef, useState } from "react";
 import { formatRupee } from "../../../shared/money.js";
 import { formatDisplayDate } from "../../../shared/statement.js";
 
@@ -25,11 +26,18 @@ export function StatementTable({
   return (
     <section className="passbook">
       <header className="passbook-head">
-        <div>
-          <p>{kicker}</p>
-          <h2>{title}</h2>
+        <div className="passbook-brand">
+          <img className="passbook-mark" src="/logo.png" alt="" />
+          <div>
+            <p className="passbook-kicker">{kicker}</p>
+            <p className="passbook-product">Balancio · Passbook statement</p>
+          </div>
         </div>
-        <p className="passbook-note">{note}</p>
+        <div className="passbook-title-block">
+          <h2>{title}</h2>
+          <p className="passbook-note">{note}</p>
+        </div>
+        <div className="passbook-stamp" aria-hidden="true">STATEMENT</div>
       </header>
       <div className="passbook-scroll">
         <table className="statement">
@@ -74,12 +82,13 @@ export function StatementTable({
                 <td data-label="Credit" className={row.credit === "0.00" ? "num" : "num credit"}>{formatRupee(row.credit, { empty: true })}</td>
                 <td data-label="Debit" className={row.debit === "0.00" ? "num" : "num debit"}>{formatRupee(row.debit, { empty: true })}</td>
                 <td data-label="Balance" className={balanceClass(row.balance)}>{formatRupee(row.balance)}</td>
-                <td data-label="" className="row-actions">
-                  <IconButton label="Edit" onClick={() => onEdit(row)}><PencilIcon /></IconButton>
-                  <IconButton label="Copy" onClick={() => onCopy(row)}><CopyIcon /></IconButton>
-                  <IconButton label="Duplicate" onClick={() => onDuplicate(row)}><DuplicateIcon /></IconButton>
-                  <IconButton label="Delete" danger onClick={() => onDelete(row)}><TrashIcon /></IconButton>
-                </td>
+                <RowActions
+                  row={row}
+                  onEdit={onEdit}
+                  onCopy={onCopy}
+                  onDuplicate={onDuplicate}
+                  onDelete={onDelete}
+                />
               </tr>
             ))}
           </tbody>
@@ -98,6 +107,75 @@ export function StatementTable({
   );
 }
 
+function RowActions({ row, onEdit, onCopy, onDuplicate, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const menuId = useId();
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function onDoc(event) {
+      if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false);
+    }
+    function onKey(event) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("pointerdown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  function run(action) {
+    setOpen(false);
+    action(row);
+  }
+
+  return (
+    <td data-label="" className="row-actions">
+      <div className="row-actions__inline">
+        <IconButton label="Edit" onClick={() => onEdit(row)}><PencilIcon /></IconButton>
+        <IconButton label="Copy" onClick={() => onCopy(row)}><CopyIcon /></IconButton>
+        <IconButton label="Duplicate" onClick={() => onDuplicate(row)}><DuplicateIcon /></IconButton>
+        <IconButton label="Delete" danger onClick={() => onDelete(row)}><TrashIcon /></IconButton>
+      </div>
+
+      <div className="row-actions__menu" ref={rootRef}>
+        <button
+          type="button"
+          className="row-actions__more"
+          aria-label="Row actions"
+          title="Actions"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls={menuId}
+          onClick={() => setOpen((value) => !value)}
+        >
+          <MoreIcon />
+        </button>
+        {open && (
+          <div id={menuId} className="row-actions__dropdown" role="menu">
+            <button type="button" role="menuitem" onClick={() => run(onEdit)}>
+              <PencilIcon /> Edit
+            </button>
+            <button type="button" role="menuitem" onClick={() => run(onCopy)}>
+              <CopyIcon /> Copy
+            </button>
+            <button type="button" role="menuitem" onClick={() => run(onDuplicate)}>
+              <DuplicateIcon /> Duplicate
+            </button>
+            <button type="button" role="menuitem" className="danger" onClick={() => run(onDelete)}>
+              <TrashIcon /> Delete
+            </button>
+          </div>
+        )}
+      </div>
+    </td>
+  );
+}
+
 function IconButton({ label, danger = false, onClick, children }) {
   return (
     <button type="button" className={danger ? "danger" : ""} aria-label={label} title={label} onClick={onClick}>
@@ -111,6 +189,16 @@ function Glyph({ children }) {
     <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       {children}
     </svg>
+  );
+}
+
+function MoreIcon() {
+  return (
+    <Glyph>
+      <circle cx="12" cy="5" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="19" r="1.4" fill="currentColor" stroke="none" />
+    </Glyph>
   );
 }
 

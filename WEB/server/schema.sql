@@ -43,3 +43,18 @@ CREATE TABLE IF NOT EXISTS encryption_keys (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (key_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS activity_logs (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  level ENUM('info', 'warn', 'error', 'security') NOT NULL DEFAULT 'info',
+  category VARCHAR(32) NOT NULL DEFAULT 'system',
+  action VARCHAR(64) NOT NULL,
+  message VARCHAR(500) NOT NULL,
+  ip VARCHAR(64) NULL,
+  meta JSON NULL,
+  PRIMARY KEY (id),
+  KEY idx_logs_created (created_at DESC),
+  KEY idx_logs_level (level, created_at DESC),
+  KEY idx_logs_category (category, created_at DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

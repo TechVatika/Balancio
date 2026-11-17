@@ -2,28 +2,26 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { Router } from "express";
-import rateLimit from "express-rate-limit";
 import { ensureSecret, getSecret, setSecret } from "./secrets.js";
+import {
+  assertNotLocked,
+  clearFailedAttempts,
+  lockMessage,
+  recordFailedAttempt,
+} from "./loginLock.js";
+import { log } from "./logger.js";
 
 const COOKIE_NAME = "balancio_session";
 const SESSION_DAYS = 30;
-
-// Only guards the password-checking routes (login/setup), so normal status polling never gets caught in it.
-const guessLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: "Too many attempts. Wait a few minutes and try again." },
-});
 
 function jwtSecret() {
   return ensureSecret("SESSION_SECRET", () => crypto.randomBytes(48).toString("hex"));
 }
 
-function httpError(status, message) {
+function httpError(status, message, extra = {}) {
   const error = new Error(message);
   error.status = status;
+  Object.assign(error, extra);
   return error;
 }
 
@@ -46,6 +44,23 @@ function assertPassword(value) {
   if (password.length < 8) throw httpError(400, "Use a password with at least 8 characters.");
   if (password.length > 200) throw httpError(400, "That password is too long.");
   return password;
+}
+
+function rejectFailedGuess(req, context = "login") {
+  const result = recordFailedAttempt(req);
+  log({
+    level: "security",
+    category: "auth",
+    action: result.locked ? `${context}.locked` : `${context}.failed`,
+    message: result.locked
+      ? `Too many failed ${context} attempts — 30-minute cooldown started.`
+      : `Failed ${context} attempt (${result.remaining} left before cooldown).`,
+    req,
+    meta: { remaining: result.remaining, locked: result.locked },
+  });
+  throw httpError(result.locked ? 429 : 401, lockMessage(result), {
+    retryAfter: result.retryAfter || undefined,
+  });
 }
 
 /** Protects routes: requires a valid session cookie, and that an admin password has been set. */
@@ -80,38 +95,72 @@ export function authRouter() {
     res.json({ configured, authenticated });
   });
 
-  router.post("/setup", guessLimiter, wrap(async (req, res) => {
+  router.post("/setup", wrap(async (req, res) => {
+    assertNotLocked(req);
     if (getSecret("ADMIN_PASSWORD_HASH")) throw httpError(409, "A password is already set. Sign in instead.");
     const password = assertPassword(req.body?.password);
     const hash = await bcrypt.hash(password, 12);
     setSecret("ADMIN_PASSWORD_HASH", hash);
+    clearFailedAttempts(req);
     setSessionCookie(res);
+    log({
+      level: "security",
+      category: "auth",
+      action: "setup",
+      message: "Admin password created and first session started.",
+      req,
+    });
     res.status(201).json({ ok: true });
   }));
 
-  router.post("/login", guessLimiter, wrap(async (req, res) => {
+  router.post("/login", wrap(async (req, res) => {
+    assertNotLocked(req);
     const hash = getSecret("ADMIN_PASSWORD_HASH");
     if (!hash) throw httpError(409, "No password is set up yet.");
     const password = String(req.body?.password ?? "");
     const ok = password && await bcrypt.compare(password, hash);
-    if (!ok) throw httpError(401, "That password is incorrect.");
+    if (!ok) rejectFailedGuess(req, "login");
+    clearFailedAttempts(req);
     setSessionCookie(res);
+    log({
+      level: "security",
+      category: "auth",
+      action: "login",
+      message: "Signed in successfully.",
+      req,
+    });
     res.json({ ok: true });
   }));
 
   router.post("/logout", (req, res) => {
     res.clearCookie(COOKIE_NAME);
+    log({
+      level: "info",
+      category: "auth",
+      action: "logout",
+      message: "Signed out.",
+      req,
+    });
     res.json({ ok: true });
   });
 
   router.post("/change-password", requireAuth, wrap(async (req, res) => {
+    assertNotLocked(req);
     const hash = getSecret("ADMIN_PASSWORD_HASH");
     const current = String(req.body?.currentPassword ?? "");
     const ok = await bcrypt.compare(current, hash);
-    if (!ok) throw httpError(401, "Your current password is incorrect.");
+    if (!ok) rejectFailedGuess(req, "password-change");
     const next = assertPassword(req.body?.newPassword);
     setSecret("ADMIN_PASSWORD_HASH", await bcrypt.hash(next, 12));
+    clearFailedAttempts(req);
     setSessionCookie(res);
+    log({
+      level: "security",
+      category: "auth",
+      action: "password.change",
+      message: "Account password changed.",
+      req,
+    });
     res.json({ ok: true });
   }));
 

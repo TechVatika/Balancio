@@ -11,8 +11,8 @@ function dbConfig() {
   const user = process.env.DB_USER || "root";
   const password = process.env.DB_PASSWORD ?? "";
   const database = process.env.DB_NAME || "balancio";
-  if (!/^[A-Za-z0-9_]+$/.test(database)) {
-    throw new Error("DB_NAME may only contain letters, numbers, and underscores.");
+  if (!/^[A-Za-z0-9_-]+$/.test(database)) {
+    throw new Error("DB_NAME may only contain letters, numbers, underscores, and hyphens.");
   }
   if (!Number.isInteger(port) || port <= 0) {
     throw new Error("DB_PORT is not a valid port.");

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { formatRupee } from "../../../shared/money.js";
 import { fyLabel, fyStartFromDate } from "../../../shared/statement.js";
 import { api } from "../api.js";
@@ -7,9 +7,7 @@ import { useBook } from "../book.jsx";
 import { askPrompt, flash } from "../dialog.js";
 import { OpeningModal } from "./OpeningModal.jsx";
 
-const NEW_BOOK = "__new__";
-
-function FyBadge() {
+function FyPicker() {
   const { meta } = useBook();
   const location = useLocation();
   const navigate = useNavigate();
@@ -26,11 +24,20 @@ function FyBadge() {
   }
 
   return (
-    <select className="fy-badge" aria-label="Financial year" title="Financial year" value={activeStart} onChange={onChange}>
-      {options.map((start) => (
-        <option key={start} value={start}>{fyLabel(start)}</option>
-      ))}
-    </select>
+    <label className="rail-field">
+      <span className="rail-field__label">Financial year</span>
+      <select
+        className="rail-select"
+        aria-label="Financial year"
+        title="Financial year"
+        value={activeStart}
+        onChange={onChange}
+      >
+        {options.map((start) => (
+          <option key={start} value={start}>{fyLabel(start)}</option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -38,12 +45,9 @@ function BookPicker() {
   const { books, bookId, setBookId, refreshBooks } = useBook();
   if (!books) return null;
 
-  async function onChange(event) {
-    const { value } = event.target;
-    if (value !== NEW_BOOK) {
-      setBookId(Number(value));
-      return;
-    }
+  const active = books.find((book) => book.id === bookId) ?? books[0];
+
+  async function createBook() {
     const name = await askPrompt({ title: "New book", placeholder: "e.g. Petty Cash", confirmText: "Create" });
     if (!name) return;
     try {
@@ -56,20 +60,45 @@ function BookPicker() {
     }
   }
 
+  function onChange(event) {
+    setBookId(Number(event.target.value));
+  }
+
   return (
-    <label className="book-picker">
-      <span>Book</span>
-      <select aria-label="Active book" value={bookId} onChange={onChange}>
-        {books.map((book) => (
-          <option key={book.id} value={book.id}>{book.name}</option>
-        ))}
-        <option value={NEW_BOOK}>+ New book…</option>
-      </select>
-    </label>
+    <div className="book-picker">
+      <div className="book-picker__head">
+        <span className="rail-field__label">Book</span>
+        <button type="button" className="book-picker__add" onClick={createBook}>
+          + New
+        </button>
+      </div>
+      <label className="book-picker__control">
+        <span className="sr">Active book</span>
+        <select
+          className="rail-select book-picker__select"
+          aria-label="Active book"
+          value={active?.id ?? bookId}
+          onChange={onChange}
+        >
+          {books.map((book) => (
+            <option key={book.id} value={book.id}>
+              {book.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {active && (
+        <p className="book-picker__meta">
+          <span>{active.entryCount} {active.entryCount === 1 ? "entry" : "entries"}</span>
+          <span aria-hidden="true">·</span>
+          <span>Open {formatRupee(active.openingBalance)}</span>
+        </p>
+      )}
+    </div>
   );
 }
 
-export function Shell({ children }) {
+export function Shell() {
   const { pathname } = useLocation();
   const { meta, metaError, refresh, toast } = useBook();
   const [openingOpen, setOpeningOpen] = useState(false);
@@ -80,6 +109,7 @@ export function Shell({ children }) {
       "/month": "Month ledger",
       "/year": "Year ledger",
       "/reports": "Reports",
+      "/activity": "Activity",
       "/account": "Account",
     };
     document.title = `${titles[pathname] ?? "Balancio"} · Balancio`;
@@ -96,12 +126,16 @@ export function Shell({ children }) {
           </div>
         </div>
         <hr className="rail-divider" />
-        <BookPicker />
+        <div className="rail-controls">
+          <FyPicker />
+          <BookPicker />
+        </div>
         <nav className="nav">
           <NavLink to="/" end>Overview</NavLink>
           <NavLink to="/month">Month ledger</NavLink>
           <NavLink to="/year">Year ledger</NavLink>
           <NavLink to="/reports">Reports</NavLink>
+          <NavLink to="/activity">Activity</NavLink>
           <NavLink to="/account">Account</NavLink>
         </nav>
         <div className="rail-foot">
@@ -113,7 +147,6 @@ export function Shell({ children }) {
         </div>
       </aside>
       <main className="canvas" id="content">
-        <FyBadge />
         {metaError && meta && <p className="form-error banner">{metaError}</p>}
         {metaError && !meta ? (
           <section className="panel connection">
@@ -123,7 +156,7 @@ export function Shell({ children }) {
             <button type="button" className="btn" onClick={refresh}>Try again</button>
           </section>
         ) : meta ? (
-          children
+          <Outlet />
         ) : (
           <p className="loading">Opening the book…</p>
         )}
