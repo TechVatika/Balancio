@@ -15,5 +15,3 @@ WEB/logs/
 **/.flutter-plugins-dependencies
 **/build/
 APP/Android/-*/
-IconKitchen-Output*.zip
-*.zip

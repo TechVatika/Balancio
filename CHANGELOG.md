@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Shift+S** saves the open form (entry, paste, opening balance, change password). Ctrl/⌘+S is not used — those belong to the browser.
 - Android adaptive launcher icons and Icon Kitchen / AppIcons asset set under `ASSETS/AppIcons/` and `APP/Android` mipmaps.
 - Android session helpers (`session_vault.dart`, `secure_config.dart`) and tighter API timeouts / keep-alive client.
+- IconKitchen export archives `IconKitchen-Output.zip` and `IconKitchen-Output (1).zip` at the repo root.
 
 ### Changed
 - Android README and launcher branding refreshed for Play Store / local builds.
