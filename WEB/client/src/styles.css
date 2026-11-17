@@ -384,6 +384,39 @@ button { cursor: pointer; }
 }
 .opening-btn:disabled { opacity: 0.6; }
 .rail-note { margin: 0; color: #93a3b5; font-size: 12px; padding: 0 4px; }
+.rail-shortcuts { margin-top: 8px; }
+.rail-note kbd,
+.shortcut-list kbd {
+  display: inline-block;
+  min-width: 1.4em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  font: 600 11px/1.4 "IBM Plex Mono", ui-monospace, monospace;
+  color: #e8eef5;
+  text-align: center;
+}
+.shortcut-list {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.shortcut-list li {
+  display: grid;
+  grid-template-columns: minmax(110px, auto) 1fr;
+  gap: 12px;
+  align-items: center;
+}
+.shortcut-list kbd {
+  border-color: #d5dde8;
+  background: #f4f7fb;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.shortcuts-modal { width: min(440px, 100%); }
 
 .canvas {
   min-width: 0;

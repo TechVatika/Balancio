@@ -9,6 +9,7 @@ import { askConfirm, flash } from "../dialog.js";
 import { EntryModal } from "../components/EntryModal.jsx";
 import { PasteModal } from "../components/PasteModal.jsx";
 import { StatementTable } from "../components/StatementTable.jsx";
+import { EVENTS, takePendingNewEntry } from "../shortcuts.js";
 
 function todayParts() {
   const now = new Date();
@@ -72,15 +73,28 @@ export function Ledger({ mode }) {
   }, [mode, period.month, period.year]);
 
   useEffect(() => {
-    function onKey(event) {
-      if (event.key.toLowerCase() !== "n" || event.metaKey || event.ctrlKey || event.altKey) return;
-      const target = event.target;
-      if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable='true']")) return;
-      event.preventDefault();
+    if (takePendingNewEntry()) setAdding(true);
+    function onNew() {
       setAdding(true);
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    function onPaste() {
+      setPasting(true);
+    }
+    function onSearch() {
+      const input = document.querySelector(".ledger-search, input[aria-label='Search entries'], input[placeholder*='Search']");
+      if (input instanceof HTMLInputElement) {
+        input.focus();
+        input.select();
+      }
+    }
+    window.addEventListener(EVENTS.NEW_ENTRY, onNew);
+    window.addEventListener(EVENTS.PASTE, onPaste);
+    window.addEventListener(EVENTS.FOCUS_SEARCH, onSearch);
+    return () => {
+      window.removeEventListener(EVENTS.NEW_ENTRY, onNew);
+      window.removeEventListener(EVENTS.PASTE, onPaste);
+      window.removeEventListener(EVENTS.FOCUS_SEARCH, onSearch);
+    };
   }, []);
 
   function goTo(next) {
@@ -420,6 +434,7 @@ function LedgerStatement({ visible, query, side, onQuery, onSide, onEdit, onCopy
       <div className="filters">
         <input
           type="search"
+          className="ledger-search"
           value={query}
           onChange={(event) => onQuery(event.target.value)}
           placeholder="Search description, date, or amount"

@@ -1,6 +1,7 @@
 import { Router } from "express";
+import { decryptJson } from "../crypto.js";
 import { getDb } from "../db.js";
-import { log } from "../logger.js";
+import { log, purgeExpiredLogs } from "../logger.js";
 
 const CLIENT_EVENTS = {
   "report.download.excel": { category: "report", level: "info", label: "Downloaded an Excel report" },
@@ -52,47 +53,51 @@ export function logsRouter() {
   }));
 
   router.get("/", wrap(async (req, res) => {
+    await purgeExpiredLogs();
     const limit = readLimit(req.query.limit);
     const level = readLevel(req.query.level);
     const category = readCategory(req.query.category);
-    const clauses = [];
-    const params = [];
-    if (level) {
-      clauses.push("level = ?");
-      params.push(level);
-    }
-    if (category) {
-      clauses.push("category = ?");
-      params.push(category);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+
+    // Payloads are sealed — decrypt in memory, then filter.
     const [rows] = await req.db.query(
-      `SELECT id, created_at, level, category, action, message, ip, meta
+      `SELECT id, payload_enc, payload_iv, payload_tag, key_id
        FROM activity_logs
-       ${where}
        ORDER BY id DESC
-       LIMIT ?`,
-      [...params, limit],
+       LIMIT 2000`,
     );
-    const [[{ total }]] = await req.db.query(
-      `SELECT COUNT(*) AS total FROM activity_logs ${where}`,
-      params,
-    );
-    res.json({
-      total: Number(total),
-      logs: rows.map((row) => ({
+
+    const logs = [];
+    let total = 0;
+    for (const row of rows) {
+      let payload;
+      try {
+        payload = await decryptJson(req.db, {
+          ciphertext: row.payload_enc,
+          iv: row.payload_iv,
+          tag: row.payload_tag,
+          keyId: row.key_id,
+        });
+      } catch {
+        continue;
+      }
+      if (!payload) continue;
+      if (level && payload.level !== level) continue;
+      if (category && payload.category !== category) continue;
+      total += 1;
+      if (logs.length >= limit) continue;
+      logs.push({
         id: row.id,
-        at: row.created_at instanceof Date
-          ? row.created_at.toISOString()
-          : String(row.created_at),
-        level: row.level,
-        category: row.category,
-        action: row.action,
-        message: row.message,
-        ip: row.ip,
-        meta: typeof row.meta === "string" ? JSON.parse(row.meta) : row.meta,
-      })),
-    });
+        at: payload.at || null,
+        level: payload.level,
+        category: payload.category,
+        action: payload.action,
+        message: payload.message,
+        ip: payload.ip,
+        meta: payload.meta ?? null,
+      });
+    }
+
+    res.json({ total, logs });
   }));
 
   router.post("/event", wrap(async (req, res) => {

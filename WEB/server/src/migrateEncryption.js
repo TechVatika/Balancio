@@ -18,11 +18,18 @@ export async function migrateDescriptionEncryption(pool) {
     "SELECT id, description FROM transactions WHERE description_enc IS NULL",
   );
   for (const row of rows) {
-    const { ciphertext, iv, tag, keyDate } = await encryptField(pool, row.description ?? "");
-    await pool.query(
-      "UPDATE transactions SET description_enc = ?, description_iv = ?, description_tag = ?, key_date = ? WHERE id = ?",
-      [ciphertext, iv, tag, keyDate, row.id],
-    );
+    const { ciphertext, iv, tag, keyId } = await encryptField(pool, row.description ?? "");
+    if (await columnExists(pool, "transactions", "key_id")) {
+      await pool.query(
+        "UPDATE transactions SET description_enc = ?, description_iv = ?, description_tag = ?, key_id = ? WHERE id = ?",
+        [ciphertext, iv, tag, keyId, row.id],
+      );
+    } else {
+      await pool.query(
+        "UPDATE transactions SET description_enc = ?, description_iv = ?, description_tag = ?, key_date = CURDATE() WHERE id = ?",
+        [ciphertext, iv, tag, row.id],
+      );
+    }
   }
   await pool.query("ALTER TABLE transactions DROP COLUMN description");
   if (rows.length) console.log(`Encrypted ${rows.length} existing description(s) and removed the old plain-text column.`);

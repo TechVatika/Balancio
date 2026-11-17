@@ -52,8 +52,13 @@ async function openPool() {
   }
   const { migrateLegacySettings } = await import("./migrateBooks.js");
   await migrateLegacySettings(pool);
+  const { migrateEncryptionKeyTable, migrateHideDates } = await import("./migrateHideDates.js");
+  await migrateEncryptionKeyTable(pool);
   const { migrateDescriptionEncryption } = await import("./migrateEncryption.js");
   await migrateDescriptionEncryption(pool);
+  const { migrateSealedStorage } = await import("./migrateSealedStorage.js");
+  await migrateSealedStorage(pool);
+  await migrateHideDates(pool);
   return pool;
 }
 

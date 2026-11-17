@@ -209,11 +209,11 @@ function KeyHistory() {
 
   return (
     <ul className="recent-list key-list">
-      {keys.map((key) => (
-        <li key={key.keyDate}>
-          <span className="date">{formatDisplayDate(key.keyDate)}</span>
+      {keys.map((key, index) => (
+        <li key={key.id}>
+          <span className="date">Key #{key.id}</span>
           <span className="desc">Daily encryption key</span>
-          <strong className="muted">{key.keyDate === keys[0].keyDate ? "Active" : "Retained"}</strong>
+          <strong className="muted">{index === 0 ? "Active" : "Retained"}</strong>
         </li>
       ))}
     </ul>

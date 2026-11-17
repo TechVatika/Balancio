@@ -12,7 +12,7 @@ import { securityRouter } from "./routes/security.js";
 import { booksRouter } from "./routes/books.js";
 import { logsRouter } from "./routes/logs.js";
 import { authRouter, requireAuth } from "./auth.js";
-import { log, writeLog } from "./logger.js";
+import { log, purgeExpiredLogs, writeLog } from "./logger.js";
 
 const app = express();
 // No trust-proxy setting: this server isn't behind a reverse proxy by default, and trusting
@@ -88,4 +88,9 @@ app.listen(port, "127.0.0.1", () => {
     action: "server.start",
     message: `API listening on 127.0.0.1:${port}`,
   }).catch(() => {});
+  // Keep only the current calendar month of activity (DB + WEB/logs files).
+  purgeExpiredLogs({ force: true }).catch(() => {});
+  setInterval(() => {
+    purgeExpiredLogs().catch(() => {});
+  }, 60 * 60 * 1000).unref?.();
 });

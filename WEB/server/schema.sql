@@ -1,60 +1,40 @@
 CREATE TABLE IF NOT EXISTS books (
   id INT UNSIGNED NOT NULL AUTO_INCREMENT,
-  name VARCHAR(100) NOT NULL,
-  opening_balance DECIMAL(14,2) NOT NULL DEFAULT 0.00,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  UNIQUE KEY idx_book_name (name)
+  payload_enc VARBINARY(2000) NOT NULL,
+  payload_iv BINARY(12) NOT NULL,
+  payload_tag BINARY(16) NOT NULL,
+  key_id INT UNSIGNED NOT NULL,
+  PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-INSERT INTO books (id, name, opening_balance)
-VALUES (1, 'General', 0.00)
-ON DUPLICATE KEY UPDATE id = id;
 
 CREATE TABLE IF NOT EXISTS transactions (
   id INT UNSIGNED NOT NULL AUTO_INCREMENT,
   book_id INT UNSIGNED NOT NULL DEFAULT 1,
-  txn_date DATE NOT NULL,
-  description_enc VARBINARY(2000) NULL,
-  description_iv BINARY(12) NULL,
-  description_tag BINARY(16) NULL,
-  key_date DATE NULL,
-  credit DECIMAL(14,2) NOT NULL DEFAULT 0.00,
-  debit DECIMAL(14,2) NOT NULL DEFAULT 0.00,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  payload_enc VARBINARY(4000) NOT NULL,
+  payload_iv BINARY(12) NOT NULL,
+  payload_tag BINARY(16) NOT NULL,
+  key_id INT UNSIGNED NOT NULL,
   PRIMARY KEY (id),
-  KEY idx_txn_date (txn_date, id)
+  KEY idx_book (book_id, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS description_enc VARBINARY(2000) NULL;
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS description_iv BINARY(12) NULL;
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS description_tag BINARY(16) NULL;
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS key_date DATE NULL;
-ALTER TABLE transactions ADD COLUMN IF NOT EXISTS book_id INT UNSIGNED NOT NULL DEFAULT 1;
-ALTER TABLE transactions ADD INDEX IF NOT EXISTS idx_book_date (book_id, txn_date, id);
-
 CREATE TABLE IF NOT EXISTS encryption_keys (
-  key_date DATE NOT NULL,
+  id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  day_token CHAR(64) NOT NULL,
   wrapped_key VARBINARY(64) NOT NULL,
   iv BINARY(12) NOT NULL,
   tag BINARY(16) NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (key_date)
+  PRIMARY KEY (id),
+  UNIQUE KEY idx_day_token (day_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS activity_logs (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  level ENUM('info', 'warn', 'error', 'security') NOT NULL DEFAULT 'info',
-  category VARCHAR(32) NOT NULL DEFAULT 'system',
-  action VARCHAR(64) NOT NULL,
-  message VARCHAR(500) NOT NULL,
-  ip VARCHAR(64) NULL,
-  meta JSON NULL,
+  payload_enc VARBINARY(8000) NOT NULL,
+  payload_iv BINARY(12) NOT NULL,
+  payload_tag BINARY(16) NOT NULL,
+  key_id INT UNSIGNED NOT NULL,
+  month_token CHAR(64) NOT NULL,
   PRIMARY KEY (id),
-  KEY idx_logs_created (created_at DESC),
-  KEY idx_logs_level (level, created_at DESC),
-  KEY idx_logs_category (category, created_at DESC)
+  KEY idx_logs_month (month_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

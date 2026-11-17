@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { getDb } from "../db.js";
-import { decryptField, encryptField } from "../crypto.js";
+import { decryptJson, encryptJson } from "../crypto.js";
 import { log } from "../logger.js";
 import { paiseToAmount, toPaise, toUnsignedPaise } from "../../../shared/money.js";
 import { fyBounds, fyLabel, fyStartFromIso, monthName, parseDate } from "../../../shared/statement.js";
@@ -55,45 +55,75 @@ function readBookId(value) {
   return bookId;
 }
 
-async function loadBook(db, bookId) {
-  const [books] = await db.query("SELECT opening_balance FROM books WHERE id = ?", [bookId]);
+async function loadBookRecord(db, bookId) {
+  const [books] = await db.query(
+    "SELECT id, payload_enc, payload_iv, payload_tag, key_id FROM books WHERE id = ?",
+    [bookId],
+  );
   if (!books.length) throw httpError(404, "That book could not be found.");
-  const openingPaise = toPaise(books[0].opening_balance);
+  const row = books[0];
+  const payload = await decryptJson(db, {
+    ciphertext: row.payload_enc,
+    iv: row.payload_iv,
+    tag: row.payload_tag,
+    keyId: row.key_id,
+  });
+  return {
+    id: row.id,
+    name: payload?.name || "Book",
+    openingBalance: String(payload?.openingBalance ?? "0.00"),
+  };
+}
+
+async function loadBook(db, bookId) {
+  const bookRow = await loadBookRecord(db, bookId);
+  const openingPaise = toPaise(bookRow.openingBalance);
   if (openingPaise == null) throw new Error("The opening balance is stored in an unexpected format.");
 
   const [txns] = await db.query(
-    `SELECT id, DATE_FORMAT(txn_date, '%Y-%m-%d') AS txn_date,
-            description_enc, description_iv, description_tag, key_date, credit, debit
+    `SELECT id, payload_enc, payload_iv, payload_tag, key_id
      FROM transactions
      WHERE book_id = ?
-     ORDER BY txn_date ASC, id ASC`,
+     ORDER BY id ASC`,
     [bookId],
   );
 
-  let balancePaise = openingPaise;
-  const rows = [];
+  const decoded = [];
   for (const txn of txns) {
-    const creditPaise = toPaise(txn.credit);
-    const debitPaise = toPaise(txn.debit);
+    const payload = await decryptJson(db, {
+      ciphertext: txn.payload_enc,
+      iv: txn.payload_iv,
+      tag: txn.payload_tag,
+      keyId: txn.key_id,
+    });
+    const creditPaise = toPaise(payload?.credit ?? "0.00");
+    const debitPaise = toPaise(payload?.debit ?? "0.00");
     if (creditPaise == null || debitPaise == null) {
       throw new Error(`Entry ${txn.id} has an amount that could not be read.`);
     }
-    balancePaise += creditPaise - debitPaise;
-    const description = await decryptField(db, {
-      ciphertext: txn.description_enc,
-      iv: txn.description_iv,
-      tag: txn.description_tag,
-      keyDate: txn.key_date,
-    });
-    rows.push({
+    decoded.push({
       id: txn.id,
-      date: txn.txn_date,
-      description,
-      credit: paiseToAmount(creditPaise),
-      debit: paiseToAmount(debitPaise),
-      balance: paiseToAmount(balancePaise),
+      date: String(payload?.date ?? ""),
+      description: String(payload?.description ?? ""),
       creditPaise,
       debitPaise,
+    });
+  }
+  decoded.sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+
+  let balancePaise = openingPaise;
+  const rows = [];
+  for (const txn of decoded) {
+    balancePaise += txn.creditPaise - txn.debitPaise;
+    rows.push({
+      id: txn.id,
+      date: txn.date,
+      description: txn.description,
+      credit: paiseToAmount(txn.creditPaise),
+      debit: paiseToAmount(txn.debitPaise),
+      balance: paiseToAmount(balancePaise),
+      creditPaise: txn.creditPaise,
+      debitPaise: txn.debitPaise,
       balancePaise,
     });
   }
@@ -375,15 +405,21 @@ export function ledgerRouter() {
     const paise = toPaise(req.body?.openingBalance);
     if (paise == null) throw httpError(400, "Enter the opening balance as a number.");
     const amount = paiseToAmount(paise);
-    const [result] = await req.db.query("UPDATE books SET opening_balance = ? WHERE id = ?", [amount, bookId]);
-    if (result.affectedRows === 0) throw httpError(404, "That book could not be found.");
+    const book = await loadBookRecord(req.db, bookId);
+    const sealed = await encryptJson(req.db, { name: book.name, openingBalance: amount });
+    await req.db.query(
+      `UPDATE books
+       SET payload_enc = ?, payload_iv = ?, payload_tag = ?, key_id = ?
+       WHERE id = ?`,
+      [sealed.ciphertext, sealed.iv, sealed.tag, sealed.keyId, bookId],
+    );
     log({
       level: "info",
       category: "ledger",
       action: "opening.update",
-      message: `Opening balance set to ${amount} for book #${bookId}.`,
+      message: `Opening balance updated for book #${bookId}.`,
       req,
-      meta: { bookId, openingBalance: amount },
+      meta: { bookId },
     });
     res.json({ openingBalance: amount });
   }));
@@ -391,25 +427,24 @@ export function ledgerRouter() {
   router.post("/transactions", wrap(async (req, res) => {
     const bookId = readBookId(req.body?.bookId);
     const entry = assertEntry(req.body);
-    const sealed = await encryptField(req.db, entry.description);
+    const sealed = await encryptJson(req.db, {
+      date: entry.date,
+      description: entry.description,
+      credit: entry.credit,
+      debit: entry.debit,
+    });
     const [result] = await req.db.query(
-      `INSERT INTO transactions (book_id, txn_date, description_enc, description_iv, description_tag, key_date, credit, debit)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [bookId, entry.date, sealed.ciphertext, sealed.iv, sealed.tag, sealed.keyDate, entry.credit, entry.debit],
+      `INSERT INTO transactions (book_id, payload_enc, payload_iv, payload_tag, key_id)
+       VALUES (?, ?, ?, ?, ?)`,
+      [bookId, sealed.ciphertext, sealed.iv, sealed.tag, sealed.keyId],
     );
     log({
       level: "info",
       category: "ledger",
       action: "entry.create",
-      message: `Added entry #${result.insertId} on ${entry.date}.`,
+      message: `Added entry #${result.insertId}.`,
       req,
-      meta: {
-        bookId,
-        entryId: result.insertId,
-        date: entry.date,
-        credit: entry.credit,
-        debit: entry.debit,
-      },
+      meta: { bookId, entryId: result.insertId },
     });
     res.status(201).json({ id: result.insertId, ...entry });
   }));
@@ -420,17 +455,21 @@ export function ledgerRouter() {
     if (!Array.isArray(entries) || entries.length === 0) throw httpError(400, "Nothing to add.");
     if (entries.length > 500) throw httpError(400, "Paste up to 500 lines at a time.");
     const clean = entries.map(assertEntry);
-    const sealed = await Promise.all(clean.map((entry) => encryptField(req.db, entry.description)));
+    const sealed = await Promise.all(clean.map((entry) => encryptJson(req.db, {
+      date: entry.date,
+      description: entry.description,
+      credit: entry.credit,
+      debit: entry.debit,
+    })));
     const connection = await req.db.getConnection();
     try {
       await connection.beginTransaction();
       for (let index = 0; index < clean.length; index += 1) {
-        const entry = clean[index];
         const seal = sealed[index];
         await connection.query(
-          `INSERT INTO transactions (book_id, txn_date, description_enc, description_iv, description_tag, key_date, credit, debit)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [bookId, entry.date, seal.ciphertext, seal.iv, seal.tag, seal.keyDate, entry.credit, entry.debit],
+          `INSERT INTO transactions (book_id, payload_enc, payload_iv, payload_tag, key_id)
+           VALUES (?, ?, ?, ?, ?)`,
+          [bookId, seal.ciphertext, seal.iv, seal.tag, seal.keyId],
         );
       }
       await connection.commit();
@@ -455,21 +494,26 @@ export function ledgerRouter() {
     const id = Number(req.params.id);
     if (!Number.isInteger(id) || id <= 0) throw httpError(400, "That entry could not be found.");
     const entry = assertEntry(req.body);
-    const sealed = await encryptField(req.db, entry.description);
+    const sealed = await encryptJson(req.db, {
+      date: entry.date,
+      description: entry.description,
+      credit: entry.credit,
+      debit: entry.debit,
+    });
     const [result] = await req.db.query(
       `UPDATE transactions
-       SET txn_date = ?, description_enc = ?, description_iv = ?, description_tag = ?, key_date = ?, credit = ?, debit = ?
+       SET payload_enc = ?, payload_iv = ?, payload_tag = ?, key_id = ?
        WHERE id = ?`,
-      [entry.date, sealed.ciphertext, sealed.iv, sealed.tag, sealed.keyDate, entry.credit, entry.debit, id],
+      [sealed.ciphertext, sealed.iv, sealed.tag, sealed.keyId, id],
     );
     if (result.affectedRows === 0) throw httpError(404, "That entry is no longer in the book.");
     log({
       level: "info",
       category: "ledger",
       action: "entry.update",
-      message: `Updated entry #${id} (${entry.date}).`,
+      message: `Updated entry #${id}.`,
       req,
-      meta: { entryId: id, date: entry.date, credit: entry.credit, debit: entry.debit },
+      meta: { entryId: id },
     });
     res.json({ id, ...entry });
   }));

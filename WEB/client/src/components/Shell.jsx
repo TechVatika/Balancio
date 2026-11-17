@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { formatRupee } from "../../../shared/money.js";
 import { fyLabel, fyStartFromDate } from "../../../shared/statement.js";
 import { api } from "../api.js";
 import { useBook } from "../book.jsx";
 import { askPrompt, flash } from "../dialog.js";
+import { EVENTS, emitShortcut, markPendingNewEntry, plainKey } from "../shortcuts.js";
 import { OpeningModal } from "./OpeningModal.jsx";
 import { RailMenu } from "./RailMenu.jsx";
+import { ShortcutsHelp } from "./ShortcutsHelp.jsx";
 
 function FyPicker() {
   const { meta } = useBook();
@@ -88,10 +90,22 @@ function BookPicker() {
   );
 }
 
+const GO_ROUTES = {
+  o: "/",
+  m: "/month",
+  y: "/year",
+  r: "/reports",
+  l: "/activity",
+  a: "/account",
+};
+
 export function Shell() {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const { meta, metaError, refresh, toast } = useBook();
   const [openingOpen, setOpeningOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const goArmedUntil = useRef(0);
 
   useEffect(() => {
     const titles = {
@@ -104,6 +118,74 @@ export function Shell() {
     };
     document.title = `${titles[pathname] ?? "Balancio"} · Balancio`;
   }, [pathname]);
+
+  useEffect(() => {
+    function onKey(event) {
+      if (shortcutsOpen || openingOpen) return;
+      const key = plainKey(event);
+      if (key == null) return;
+
+      const now = Date.now();
+      if (now < goArmedUntil.current) {
+        const route = GO_ROUTES[key.toLowerCase()];
+        goArmedUntil.current = 0;
+        if (route) {
+          event.preventDefault();
+          navigate(route);
+        }
+        return;
+      }
+
+      if (key === "?" || (key === "/" && event.shiftKey)) {
+        event.preventDefault();
+        setShortcutsOpen(true);
+        return;
+      }
+
+      const lower = key.toLowerCase();
+      if (lower === "g") {
+        event.preventDefault();
+        goArmedUntil.current = now + 1500;
+        return;
+      }
+      if (lower === "n") {
+        event.preventDefault();
+        if (pathname === "/" || pathname === "/month" || pathname === "/year") {
+          emitShortcut(EVENTS.NEW_ENTRY);
+        } else {
+          markPendingNewEntry();
+          navigate("/month");
+        }
+        return;
+      }
+      if (lower === "p") {
+        event.preventDefault();
+        if (pathname === "/month" || pathname === "/year") {
+          emitShortcut(EVENTS.PASTE);
+        } else {
+          navigate("/month");
+          window.setTimeout(() => emitShortcut(EVENTS.PASTE), 0);
+        }
+        return;
+      }
+      if (key === "/") {
+        event.preventDefault();
+        if (pathname === "/month" || pathname === "/year") {
+          emitShortcut(EVENTS.FOCUS_SEARCH);
+        } else {
+          navigate("/month");
+          window.setTimeout(() => emitShortcut(EVENTS.FOCUS_SEARCH), 0);
+        }
+        return;
+      }
+      if (lower === "b") {
+        event.preventDefault();
+        if (meta) setOpeningOpen(true);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [navigate, pathname, meta, shortcutsOpen, openingOpen]);
 
   return (
     <div className="shell">
@@ -136,6 +218,7 @@ export function Shell() {
             <strong className={meta && meta.balance.startsWith("-") ? "debit" : ""}>{meta ? formatRupee(meta.balance) : "—"}</strong>
           </button>
           <p className="rail-note">Your personal ledger. Credit is money in, debit is money out.</p>
+          <p className="rail-note rail-shortcuts">Press <kbd>?</kbd> for shortcuts</p>
         </div>
       </aside>
       <main className="canvas" id="content">
@@ -156,6 +239,7 @@ export function Shell() {
       {openingOpen && meta && (
         <OpeningModal openingBalance={meta.openingBalance} onClose={() => setOpeningOpen(false)} />
       )}
+      {shortcutsOpen && <ShortcutsHelp onClose={() => setShortcutsOpen(false)} />}
       {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   );

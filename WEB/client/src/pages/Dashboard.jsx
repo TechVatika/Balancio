@@ -5,6 +5,7 @@ import { formatDisplayDate, monthName } from "../../../shared/statement.js";
 import { api } from "../api.js";
 import { useBook } from "../book.jsx";
 import { EntryModal } from "../components/EntryModal.jsx";
+import { EVENTS, takePendingNewEntry } from "../shortcuts.js";
 
 function flowClass(amount, direction) {
   const raw = String(amount ?? "0.00");
@@ -20,15 +21,12 @@ export function Dashboard() {
   const [adding, setAdding] = useState(false);
 
   useEffect(() => {
-    function onKey(event) {
-      if (event.key.toLowerCase() !== "n" || event.metaKey || event.ctrlKey || event.altKey) return;
-      const target = event.target;
-      if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable='true']")) return;
-      event.preventDefault();
+    if (takePendingNewEntry()) setAdding(true);
+    function onNew() {
       setAdding(true);
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener(EVENTS.NEW_ENTRY, onNew);
+    return () => window.removeEventListener(EVENTS.NEW_ENTRY, onNew);
   }, []);
 
   useEffect(() => {
@@ -140,14 +138,6 @@ export function Dashboard() {
 
       <section className="panel">
         <header className="panel-head">
-          <h2>Largest payments</h2>
-          <span className="muted">{monthName(data.today.month)}</span>
-        </header>
-        <OutflowList rows={data.month.rows} />
-      </section>
-
-      <section className="panel">
-        <header className="panel-head">
           <h2>Latest entries</h2>
           <Link to={monthPath} className="text-link">Month ledger</Link>
         </header>
@@ -166,6 +156,14 @@ export function Dashboard() {
             ))}
           </ul>
         )}
+      </section>
+
+      <section className="panel">
+        <header className="panel-head">
+          <h2>Largest payments</h2>
+          <span className="muted">{monthName(data.today.month)}</span>
+        </header>
+        <OutflowList rows={data.month.rows} />
       </section>
 
       {adding && (

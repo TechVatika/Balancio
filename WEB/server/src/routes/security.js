@@ -17,7 +17,7 @@ export function securityRouter() {
   router.get("/keys", wrap(async (req, res) => {
     const history = await listKeyHistory(req.db);
     res.json({
-      keys: history.map((row) => ({ keyDate: row.key_date, createdAt: row.created_at })),
+      keys: history.map((row) => ({ id: row.id })),
     });
   }));
 

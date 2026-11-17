@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { dayToken, encryptJson, monthToken, sealWithMaster } from "./crypto.js";
 import { getDb } from "./db.js";
 import { clientAgent, clientIp } from "./loginLock.js";
 
@@ -8,9 +9,83 @@ const LEVELS = new Set(["info", "warn", "error", "security"]);
 /** All Balancio .log files live in WEB/logs/ (one folder for activity + any diverted process logs). */
 const LOG_DIR = fileURLToPath(new URL("../../logs", import.meta.url));
 const MAX_MESSAGE = 500;
+const PURGE_COOLDOWN_MS = 60 * 60 * 1000;
+let lastPurgeAt = 0;
 
 function ensureLogDir() {
   if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
+}
+
+/** First instant of the current local calendar month — older logs are removed. */
+function currentMonthStart() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+}
+
+function currentYearMonth() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function purgeOldLogFiles(monthStart) {
+  let removed = 0;
+  if (!fs.existsSync(LOG_DIR)) return removed;
+  for (const name of fs.readdirSync(LOG_DIR)) {
+    if (!name.endsWith(".log")) continue;
+    const full = path.join(LOG_DIR, name);
+    // Opaque balancio-*.log names: drop files whose mtime is before this month.
+    let drop = false;
+    try {
+      drop = fs.statSync(full).mtime < monthStart;
+    } catch {
+      drop = false;
+    }
+    if (!drop) continue;
+    try {
+      fs.unlinkSync(full);
+      removed += 1;
+    } catch {
+      // Skip locked/unreadable files.
+    }
+  }
+  return removed;
+}
+
+/**
+ * Drop MySQL activity rows and WEB/logs files from previous calendar months.
+ * Safe to call often; runs at most once per hour unless force is set.
+ */
+export async function purgeExpiredLogs({ force = false } = {}) {
+  const now = Date.now();
+  if (!force && now - lastPurgeAt < PURGE_COOLDOWN_MS) return { rows: 0, files: 0 };
+  lastPurgeAt = now;
+
+  let rows = 0;
+  try {
+    const db = await getDb();
+    const keep = monthToken();
+    const [result] = await db.query(
+      "DELETE FROM activity_logs WHERE month_token <> ?",
+      [keep],
+    );
+    rows = Number(result?.affectedRows ?? 0);
+  } catch {
+    // DB may be unavailable during boot.
+  }
+
+  const files = purgeOldLogFiles(currentMonthStart());
+
+  if (rows > 0 || files > 0) {
+    writeLog({
+      level: "info",
+      category: "system",
+      action: "logs.month_purge",
+      message: `Cleared previous-month logs (${rows} database ${rows === 1 ? "row" : "rows"}, ${files} ${files === 1 ? "file" : "files"}).`,
+      meta: { rows, files, keptFrom: currentYearMonth() },
+    }).catch(() => {});
+  }
+
+  return { rows, files };
 }
 
 function stamp() {
@@ -18,8 +93,8 @@ function stamp() {
 }
 
 function dayFile() {
-  const day = stamp().slice(0, 10);
-  return path.join(LOG_DIR, `balancio-${day}.log`);
+  // Filename uses an opaque day token — not a readable calendar date.
+  return path.join(LOG_DIR, `balancio-${dayToken()}.log`);
 }
 
 function clip(value, max = MAX_MESSAGE) {
@@ -31,7 +106,7 @@ function clip(value, max = MAX_MESSAGE) {
 function appendFileLog(entry) {
   try {
     ensureLogDir();
-    const line = JSON.stringify({
+    const sealed = sealWithMaster(Buffer.from(JSON.stringify({
       at: stamp(),
       level: entry.level,
       category: entry.category,
@@ -39,6 +114,13 @@ function appendFileLog(entry) {
       message: entry.message,
       ip: entry.ip || undefined,
       meta: entry.meta || undefined,
+    }), "utf8"));
+    // On-disk lines are ciphertext only — open with MASTER_KEY if you need recovery.
+    const line = JSON.stringify({
+      v: 1,
+      enc: sealed.ciphertext.toString("base64"),
+      iv: sealed.iv.toString("base64"),
+      tag: sealed.tag.toString("base64"),
     });
     fs.appendFileSync(dayFile(), `${line}\n`, "utf8");
   } catch {
@@ -47,9 +129,8 @@ function appendFileLog(entry) {
 }
 
 function consoleLine(entry) {
-  const prefix = `[${entry.level}] ${entry.category}.${entry.action}`;
-  const ip = entry.ip ? ` ip=${entry.ip}` : "";
-  const line = `${prefix}${ip} ${entry.message}`;
+  // Console must not print amounts, descriptions, or IPs — only opaque action labels.
+  const line = `[${entry.level}] ${entry.category}.${entry.action}`;
   if (entry.level === "error") console.error(line);
   else if (entry.level === "warn" || entry.level === "security") console.warn(line);
   else console.log(line);
@@ -85,17 +166,20 @@ export async function writeLog({
 
   try {
     const db = await getDb();
+    const at = stamp();
+    const sealed = await encryptJson(db, {
+      at,
+      level: entry.level,
+      category: entry.category,
+      action: entry.action,
+      message: entry.message,
+      ip: entry.ip,
+      meta: entry.meta,
+    });
     await db.query(
-      `INSERT INTO activity_logs (level, category, action, message, ip, meta)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [
-        entry.level,
-        entry.category,
-        entry.action,
-        entry.message,
-        entry.ip,
-        entry.meta ? JSON.stringify(entry.meta) : null,
-      ],
+      `INSERT INTO activity_logs (payload_enc, payload_iv, payload_tag, key_id, month_token)
+       VALUES (?, ?, ?, ?, ?)`,
+      [sealed.ciphertext, sealed.iv, sealed.tag, sealed.keyId, monthToken()],
     );
   } catch {
     // DB may be down during early boot or outages — file/console already have it.
