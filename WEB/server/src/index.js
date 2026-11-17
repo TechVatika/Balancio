@@ -80,13 +80,14 @@ app.use((error, req, res, next) => {
 });
 
 const port = Number(process.env.PORT || 4000);
-app.listen(port, "127.0.0.1", () => {
-  console.log(`Balancio API  http://127.0.0.1:${port}`);
+const host = process.env.HOST || "0.0.0.0";
+app.listen(port, host, () => {
+  console.log(`Balancio API  http://${host === "0.0.0.0" ? "192.168.31.70" : host}:${port}`);
   writeLog({
     level: "info",
     category: "system",
     action: "server.start",
-    message: `API listening on 127.0.0.1:${port}`,
+    message: `API listening on ${host}:${port}`,
   }).catch(() => {});
   // Keep only the current calendar month of activity (DB + WEB/logs files).
   purgeExpiredLogs({ force: true }).catch(() => {});

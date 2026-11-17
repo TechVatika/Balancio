@@ -1,11 +1,11 @@
-gradle-wrapper.jar
 /.gradle
 /captures/
-/gradlew
-/gradlew.bat
 /local.properties
 GeneratedPluginRegistrant.java
 .cxx/
+
+# Keep gradle wrapper scripts/jar tracked so Windows network shares always see them.
+# (Flutter's default template ignores these; that breaks UNC + space paths.)
 
 # Remember to never publicly share your keystore.
 # See https://flutter.dev/to/reference-keystore

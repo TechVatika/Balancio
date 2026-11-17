@@ -113,10 +113,10 @@ class _LedgerPageState extends State<LedgerPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete this entry?'),
-        content: Text('${row['description']}'),
+        content: Text('${row['description']} will leave the book, and the balance will be recalculated.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: debit), onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
         ],
       ),
     );
@@ -140,22 +140,30 @@ class _LedgerPageState extends State<LedgerPage> {
       if (side == 'out' && row['debit'] == '0.00') return false;
       final needle = query.trim().toLowerCase();
       if (needle.isEmpty) return true;
-      return '${row['description']}'.toLowerCase().contains(needle);
+      final hay = '${row['date']} ${displayDate('${row['date']}')} ${row['description']} ${row['credit']} ${row['debit']}'.toLowerCase();
+      return hay.contains(needle);
     }).toList();
     final totals = ledger['totals'] as Map<String, dynamic>;
     return Column(children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Eyebrow(widget.yearly ? 'Financial year ledger' : 'Month ledger'),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
         child: Row(children: [
           IconButton(onPressed: () => _shift(-1), icon: const Icon(Icons.chevron_left)),
-          Expanded(child: Text('${ledger['label']}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18, color: navy))),
+          Expanded(child: Text('${ledger['label']}', textAlign: TextAlign.center, style: const TextStyle(fontFamily: fontDisplay, fontWeight: FontWeight.w700, fontSize: 20, color: navy))),
           IconButton(onPressed: () => _shift(1), icon: const Icon(Icons.chevron_right)),
         ]),
       ),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: TextField(
-          decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search this statement'),
+          decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search description, date, or amount'),
           onChanged: (value) => setState(() => query = value),
         ),
       ),
@@ -179,7 +187,7 @@ class _LedgerPageState extends State<LedgerPage> {
       ),
       Expanded(
         child: rows.isEmpty
-            ? const Center(child: Text('No lines in this period.', style: TextStyle(color: muted)))
+            ? Center(child: Text(query.trim().isEmpty ? 'No entries in this period. Add one, or paste a statement.' : 'No lines match this search.', style: const TextStyle(color: muted), textAlign: TextAlign.center))
             : ListView.separated(
                 padding: const EdgeInsets.fromLTRB(8, 8, 8, 96),
                 itemCount: rows.length,
@@ -188,7 +196,7 @@ class _LedgerPageState extends State<LedgerPage> {
                   final row = rows[index];
                   final moneyIn = row['credit'] != '0.00';
                   return ListTile(
-                    title: Text('${row['description']}'),
+                    title: LedgerText('${row['description']}'),
                     subtitle: Text(displayDate('${row['date']}')),
                     trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
                       AmountText(moneyIn ? row['credit'] : row['debit'], out: !moneyIn),

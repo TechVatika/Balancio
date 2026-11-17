@@ -4,3 +4,14 @@ dist
 *.log
 WEB/logs/
 .DS_Store
+
+# IDE / local machine
+.idea/
+**/.idea/
+**/local.properties
+
+# Flutter / Android build noise
+**/.dart_tool/
+**/.flutter-plugins-dependencies
+**/build/
+APP/Android/-*/

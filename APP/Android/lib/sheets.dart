@@ -55,9 +55,13 @@ class _EntrySheetState extends State<EntrySheet> {
   }
 
   Future<void> save() async {
+    if (description.text.trim().isEmpty) {
+      setState(() => error = 'Enter a description.');
+      return;
+    }
     final paise = toUnsignedPaise(amount.text);
-    if (date.isEmpty || description.text.trim().isEmpty || paise == null || paise == 0) {
-      setState(() => error = 'Enter a date, a description, and an amount.');
+    if (paise == null || paise == 0) {
+      setState(() => error = 'Enter the amount without a minus. Choose credit for money in, or debit for money out.');
       return;
     }
     setState(() {
@@ -95,9 +99,11 @@ class _EntrySheetState extends State<EntrySheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(editing ? 'Update this entry' : 'Add an entry', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: navy)),
+          Eyebrow(editing ? 'Edit line' : 'New line'),
           const SizedBox(height: 4),
-          const Text('Credit is money in. Debit is money out.', style: TextStyle(color: muted)),
+          Text(editing ? 'Update this entry' : 'Add an entry', style: const TextStyle(fontFamily: fontDisplay, fontSize: 22, fontWeight: FontWeight.w700, color: navy)),
+          const SizedBox(height: 4),
+          const Text('Your personal ledger. Credit is money in, debit is money out.', style: TextStyle(color: muted)),
           const SizedBox(height: 16),
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -112,12 +118,18 @@ class _EntrySheetState extends State<EntrySheet> {
               }
             },
           ),
-          TextField(controller: description, textCapitalization: TextCapitalization.sentences, decoration: const InputDecoration(labelText: 'Description')),
+          TextField(
+            controller: description,
+            maxLength: 500,
+            textCapitalization: TextCapitalization.sentences,
+            style: const TextStyle(fontFamily: fontGujarati, fontFamilyFallback: ['NotoSerifGujarati', fontSans]),
+            decoration: const InputDecoration(labelText: 'Description', hintText: 'Salary, rent, UPI, ATM…'),
+          ),
           const SizedBox(height: 12),
           SegmentedButton<bool>(
             segments: const [
-              ButtonSegment(value: true, label: Text('Credit'), icon: Icon(Icons.south_west)),
-              ButtonSegment(value: false, label: Text('Debit'), icon: Icon(Icons.north_east)),
+              ButtonSegment(value: true, label: Text('Credit · in')),
+              ButtonSegment(value: false, label: Text('Debit · out')),
             ],
             selected: {moneyIn},
             onSelectionChanged: (value) => setState(() => moneyIn = value.first),
@@ -130,7 +142,7 @@ class _EntrySheetState extends State<EntrySheet> {
             children: [
               Expanded(child: OutlinedButton(onPressed: saving ? null : () => Navigator.pop(context, false), child: const Text('Cancel'))),
               const SizedBox(width: 12),
-              Expanded(child: FilledButton(onPressed: saving ? null : save, child: Text(saving ? 'Saving…' : 'Save'))),
+              Expanded(child: FilledButton(onPressed: saving ? null : save, child: Text(saving ? 'Saving…' : editing ? 'Save changes' : 'Add entry'))),
             ],
           ),
         ],
@@ -196,16 +208,18 @@ class _PasteSheetState extends State<PasteSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('Paste entries', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: navy)),
+          const Eyebrow('Bring a statement in'),
           const SizedBox(height: 4),
-          const Text('One line per entry: date, description, credit, debit.', style: TextStyle(color: muted)),
+          const Text('Paste entries', style: TextStyle(fontFamily: fontDisplay, fontSize: 22, fontWeight: FontWeight.w700, color: navy)),
+          const SizedBox(height: 4),
+          const Text('One line per entry: date, description, credit, debit. Tabs or commas both work.', style: TextStyle(color: muted)),
           const SizedBox(height: 12),
           TextField(controller: text, minLines: 6, maxLines: 10, onChanged: (_) => setState(() {}), decoration: const InputDecoration(alignLabelWithHint: true, labelText: 'Statement text')),
           if (parsed.rows.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text('${parsed.rows.length} ${parsed.rows.length == 1 ? 'entry' : 'entries'} ready', style: const TextStyle(color: navy, fontWeight: FontWeight.w700))),
           if (parsed.errors.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text(parsed.errors.first, style: const TextStyle(color: debit))),
           if (error.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text(error, style: const TextStyle(color: debit))),
           const SizedBox(height: 16),
-          FilledButton(onPressed: saving || parsed.rows.isEmpty || parsed.errors.isNotEmpty ? null : () => save(parsed), child: Text(saving ? 'Saving…' : 'Add these lines')),
+          FilledButton(onPressed: saving || parsed.rows.isEmpty || parsed.errors.isNotEmpty ? null : () => save(parsed), child: Text(saving ? 'Saving…' : 'Paste entries')),
         ],
       ),
     );
