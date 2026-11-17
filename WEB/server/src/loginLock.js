@@ -5,7 +5,14 @@ const COOLDOWN_MS = 30 * 60 * 1000;
 const attempts = new Map();
 
 export function clientIp(req) {
-  return req.socket?.remoteAddress || req.ip || "unknown";
+  // This server listens on loopback by default, so X-Forwarded-For is not trusted.
+  // Record the real TCP peer; strip the IPv4-mapped IPv6 prefix when present.
+  const raw = req.socket?.remoteAddress || req.ip || "unknown";
+  return String(raw).replace(/^::ffff:/i, "") || "unknown";
+}
+
+export function clientAgent(req) {
+  return String(req.get("user-agent") || "").slice(0, 200) || null;
 }
 
 function entryFor(ip) {

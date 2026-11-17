@@ -74,9 +74,8 @@ export function financialYearLabel(date = new Date()) {
 
 export function formatDisplayDate(iso) {
   const [year, month, day] = String(iso).split("-").map(Number);
-  const short = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   if (!year || !month || !day) return String(iso ?? "");
-  return `${day} ${short[month - 1]} ${year}`;
+  return `${String(day).padStart(2, "0")}-${String(month).padStart(2, "0")}-${year}`;
 }
 
 function isoDate(year, month, day) {

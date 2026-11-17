@@ -35,8 +35,9 @@ String todayIso() {
 String displayDate(String iso) {
   final parts = iso.split('-');
   if (parts.length != 3) return iso;
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  final month = int.tryParse(parts[1]) ?? 1;
-  final day = int.tryParse(parts[2]) ?? 1;
-  return '$day ${months[month - 1]} ${parts[0]}';
+  final year = parts[0];
+  final month = (int.tryParse(parts[1]) ?? 0).toString().padLeft(2, '0');
+  final day = (int.tryParse(parts[2]) ?? 0).toString().padLeft(2, '0');
+  if (month == '00' || day == '00') return iso;
+  return '$day-$month-$year';
 }

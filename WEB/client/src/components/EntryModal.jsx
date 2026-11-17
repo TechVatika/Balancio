@@ -61,8 +61,8 @@ export function EntryModal({ entry, onClose, onSaved }) {
   }
 
   return (
-    <div className="modal-back" onMouseDown={entry ? undefined : onClose}>
-      <form className="modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={onSubmit}>
+    <div className="modal-back">
+      <form className="modal" onSubmit={onSubmit}>
         <p className="eyebrow">{entry ? "Edit line" : "New line"}</p>
         <h2>{entry ? "Update this entry" : "Add an entry"}</h2>
         <label className="field">

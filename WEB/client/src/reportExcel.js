@@ -12,6 +12,7 @@ const medium = { style: "medium", color: { argb: "FF000000" } };
 const thin = { style: "thin", color: { argb: "FF000000" } };
 const BRAND_GRAY = { theme: 1, tint: 0.3499862666707358 };
 const ACCENT_NAVY = { theme: 4, tint: -0.249946592608417 };
+const WHITE = { theme: 0 };
 const COMPANY_NAME = "TechVatika Data Centers India Pvt. Ltd.";
 const COMPANY_TAG = "Accounts";
 
@@ -121,7 +122,7 @@ function build(sheet, report) {
   ["TOTAL IN", "TOTAL OUT", "NET BALANCE"].forEach((label, index) => {
     const cell = sheet.getCell(3, index + 3);
     cell.value = label;
-    paint(cell, { align: "center", fill: ACCENT });
+    paint(cell, { align: "center", fill: ACCENT, color: WHITE });
   });
 
   sheet.getCell("A4").value = summary ? "MONTHLY SUMMARY" : "STATEMENT OF ACCOUNT";
@@ -154,9 +155,16 @@ function build(sheet, report) {
   heads.forEach((label, index) => {
     const cell = sheet.getCell(7, index + 1);
     cell.value = label;
-    paint(cell, { bold: true, align: "center", fill: HEADER });
+    paint(cell, { bold: true, align: "center", fill: HEADER, color: WHITE });
+    const isFirst = index === 0;
+    const isLast = index === heads.length - 1;
+    cell.border = {
+      top: thin,
+      bottom: thin,
+      left: isFirst ? medium : thin,
+      right: isLast ? medium : thin,
+    };
   });
-  gridBorder(sheet, 7, 1, 7, 5);
 
   const creditTotal = lines.length ? formula(`SUM(C${start}:C${end})`, rupee(report.totals.credit)) : 0;
   const debitTotal = lines.length ? formula(`SUM(D${start}:D${end})`, rupee(report.totals.debit)) : 0;

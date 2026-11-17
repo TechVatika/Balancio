@@ -15,6 +15,8 @@ const CATEGORIES = [
   ["auth", "Auth"],
   ["book", "Books"],
   ["ledger", "Ledger"],
+  ["report", "Reports"],
+  ["ui", "Pages"],
   ["system", "System"],
 ];
 
@@ -22,10 +24,29 @@ function formatWhen(value) {
   const raw = String(value ?? "");
   const date = new Date(raw.includes("T") ? raw : raw.replace(" ", "T"));
   if (Number.isNaN(date.getTime())) return raw;
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const yyyy = date.getFullYear();
+  const time = new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
   }).format(date);
+  return `${dd}-${mm}-${yyyy}, ${time}`;
+}
+
+function formatIp(ip) {
+  const value = String(ip ?? "").trim();
+  if (!value) return "";
+  if (value === "127.0.0.1" || value === "::1") return `${value} (this machine)`;
+  return value;
+}
+
+function formatMeta(meta) {
+  if (!meta || typeof meta !== "object") return null;
+  const copy = { ...meta };
+  const agent = copy.userAgent;
+  delete copy.userAgent;
+  return { rest: Object.keys(copy).length ? copy : null, agent: agent || null };
 }
 
 export function Activity() {
@@ -78,11 +99,6 @@ export function Activity() {
         <div>
           <p className="eyebrow">Activity</p>
           <h1>System log</h1>
-          <p className="lede">
-            Sign-ins, lockouts, book changes, ledger edits, and server events — kept in MySQL and in daily files under
-            {" "}
-            <code>WEB/server/logs/</code>.
-          </p>
         </div>
         <div className="toolbar">
           <button type="button" className="btn secondary" onClick={load} disabled={loading}>
@@ -136,10 +152,21 @@ export function Activity() {
                 </div>
                 <p className="log-message">{row.message}</p>
                 <div className="log-foot">
-                  {row.ip && <span className="muted">IP {row.ip}</span>}
-                  {row.meta && Object.keys(row.meta).length > 0 && (
-                    <code className="log-meta-json">{JSON.stringify(row.meta)}</code>
-                  )}
+                  {row.ip && <span className="muted">IP {formatIp(row.ip)}</span>}
+                  {(() => {
+                    const detail = formatMeta(row.meta);
+                    if (!detail) return null;
+                    return (
+                      <>
+                        {detail.rest && (
+                          <code className="log-meta-json">{JSON.stringify(detail.rest)}</code>
+                        )}
+                        {detail.agent && (
+                          <span className="muted log-agent" title={detail.agent}>{detail.agent}</span>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </li>
             ))}

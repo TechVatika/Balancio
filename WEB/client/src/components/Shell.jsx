@@ -6,6 +6,7 @@ import { api } from "../api.js";
 import { useBook } from "../book.jsx";
 import { askPrompt, flash } from "../dialog.js";
 import { OpeningModal } from "./OpeningModal.jsx";
+import { RailMenu } from "./RailMenu.jsx";
 
 function FyPicker() {
   const { meta } = useBook();
@@ -17,27 +18,23 @@ function FyPicker() {
   const urlYear = onYearPage ? Number(new URLSearchParams(location.search).get("year")) : NaN;
   const activeStart = Number.isInteger(urlYear) ? urlYear : todayStart;
 
-  const options = Array.from(new Set([todayStart, activeStart, ...(meta?.fys ?? [])])).sort((a, b) => b - a);
-
-  function onChange(event) {
-    navigate(`/year?year=${event.target.value}`);
-  }
+  const options = Array.from(new Set([todayStart, activeStart, ...(meta?.fys ?? [])]))
+    .sort((a, b) => b - a)
+    .map((start) => ({
+      value: start,
+      label: fyLabel(start),
+      hint: start === todayStart ? "Current" : undefined,
+    }));
 
   return (
-    <label className="rail-field">
-      <span className="rail-field__label">Financial year</span>
-      <select
-        className="rail-select"
-        aria-label="Financial year"
-        title="Financial year"
-        value={activeStart}
-        onChange={onChange}
-      >
-        {options.map((start) => (
-          <option key={start} value={start}>{fyLabel(start)}</option>
-        ))}
-      </select>
-    </label>
+    <RailMenu
+      className="rail-field"
+      label="Financial year"
+      ariaLabel="Financial year"
+      value={activeStart}
+      options={options}
+      onChange={(year) => navigate(`/year?year=${year}`)}
+    />
   );
 }
 
@@ -60,10 +57,6 @@ function BookPicker() {
     }
   }
 
-  function onChange(event) {
-    setBookId(Number(event.target.value));
-  }
-
   return (
     <div className="book-picker">
       <div className="book-picker__head">
@@ -72,21 +65,18 @@ function BookPicker() {
           + New
         </button>
       </div>
-      <label className="book-picker__control">
-        <span className="sr">Active book</span>
-        <select
-          className="rail-select book-picker__select"
-          aria-label="Active book"
-          value={active?.id ?? bookId}
-          onChange={onChange}
-        >
-          {books.map((book) => (
-            <option key={book.id} value={book.id}>
-              {book.name}
-            </option>
-          ))}
-        </select>
-      </label>
+      <RailMenu
+        className="book-picker__control"
+        buttonClassName="book-picker__select"
+        ariaLabel="Active book"
+        value={active?.id ?? bookId}
+        options={books.map((book) => ({
+          value: book.id,
+          label: book.name,
+          hint: `${book.entryCount} ${book.entryCount === 1 ? "entry" : "entries"}`,
+        }))}
+        onChange={(id) => setBookId(Number(id))}
+      />
       {active && (
         <p className="book-picker__meta">
           <span>{active.entryCount} {active.entryCount === 1 ? "entry" : "entries"}</span>
@@ -130,6 +120,7 @@ export function Shell() {
           <FyPicker />
           <BookPicker />
         </div>
+        <hr className="rail-divider" />
         <nav className="nav">
           <NavLink to="/" end>Overview</NavLink>
           <NavLink to="/month">Month ledger</NavLink>
@@ -139,6 +130,7 @@ export function Shell() {
           <NavLink to="/account">Account</NavLink>
         </nav>
         <div className="rail-foot">
+          <hr className="rail-divider" />
           <button type="button" className="opening-btn" onClick={() => setOpeningOpen(true)} disabled={!meta}>
             <span>Current balance</span>
             <strong className={meta && meta.balance.startsWith("-") ? "debit" : ""}>{meta ? formatRupee(meta.balance) : "—"}</strong>

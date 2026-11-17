@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { formatRupee, paiseToAmount, toPaise } from "../../../shared/money.js";
 import { MONTH_NAMES, formatDisplayDate, fyLabel, fyStartFromDate, fyStartFromIso, monthName, statementToTsv } from "../../../shared/statement.js";
+import { logEvent } from "../activityLog.js";
 import { api } from "../api.js";
 import { useBook } from "../book.jsx";
 import { askConfirm, flash } from "../dialog.js";
@@ -124,6 +125,11 @@ export function Ledger({ mode }) {
       document.execCommand("copy");
       area.remove();
     }
+    logEvent("ledger.copy", `Copied statement for ${visible.label}.`, {
+      mode,
+      label: visible.label,
+      rows: visible.rows.length,
+    });
     notify("Statement copied. Paste it into a sheet, a note, or a message.");
   }
 
@@ -136,6 +142,12 @@ export function Ledger({ mode }) {
       row.balance,
     ].join("\t");
     const copied = await writeClipboard(text);
+    if (copied) {
+      logEvent("ledger.copy.entry", `Copied entry #${row.id} (${row.date}).`, {
+        entryId: row.id,
+        date: row.date,
+      });
+    }
     flash(copied ? "Line copied." : "The line could not be copied.", copied ? "success" : "error");
   }
 

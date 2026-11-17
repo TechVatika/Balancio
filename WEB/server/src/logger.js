@@ -2,10 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getDb } from "./db.js";
-import { clientIp } from "./loginLock.js";
+import { clientAgent, clientIp } from "./loginLock.js";
 
 const LEVELS = new Set(["info", "warn", "error", "security"]);
-const LOG_DIR = fileURLToPath(new URL("../logs", import.meta.url));
+/** All Balancio .log files live in WEB/logs/ (one folder for activity + any diverted process logs). */
+const LOG_DIR = fileURLToPath(new URL("../../logs", import.meta.url));
 const MAX_MESSAGE = 500;
 
 function ensureLogDir() {
@@ -67,13 +68,16 @@ export async function writeLog({
   meta = null,
   req = null,
 } = {}) {
+  const agent = req ? clientAgent(req) : null;
+  const baseMeta = meta && typeof meta === "object" ? { ...meta } : {};
+  if (agent && baseMeta.userAgent == null) baseMeta.userAgent = agent;
   const entry = {
     level: LEVELS.has(level) ? level : "info",
     category: clip(category, 32) || "system",
     action: clip(action, 64) || "unknown",
     message: clip(message) || "—",
     ip: ip || (req ? clientIp(req) : null),
-    meta: meta && typeof meta === "object" ? meta : null,
+    meta: Object.keys(baseMeta).length ? baseMeta : null,
   };
 
   consoleLine(entry);

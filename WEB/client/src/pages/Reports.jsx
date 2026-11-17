@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { formatRupee } from "../../../shared/money.js";
 import { formatDisplayDate } from "../../../shared/statement.js";
+import { logEvent } from "../activityLog.js";
 import { api } from "../api.js";
 import { useBook } from "../book.jsx";
 
@@ -152,6 +153,13 @@ export function Reports() {
         return { name: book.name, report: buildReportFile(data) };
       }));
       await saveMultiBookExcelReport(entries);
+      logEvent("report.download.excel", `Downloaded Excel report (${entries.length} ${entries.length === 1 ? "sheet" : "sheets"}).`, {
+        kind,
+        side,
+        from: report.from,
+        to: report.to,
+        books: entries.length,
+      });
       notify(entries.length > 1 ? "Excel report downloaded — one sheet per book." : "Excel report downloaded.");
     } catch (err) {
       notify(err.message || "The Excel file could not be created.");
@@ -166,6 +174,13 @@ export function Reports() {
     try {
       const { savePdfReport } = await import("../reportPdf.js");
       await savePdfReport(buildReportFile(report));
+      logEvent("report.download.pdf", `Downloaded PDF report ${report.from} to ${report.to}.`, {
+        kind,
+        side,
+        from: report.from,
+        to: report.to,
+        bookId,
+      });
       notify("PDF report downloaded.");
     } catch (err) {
       notify(err.message || "The PDF could not be created.");
@@ -270,14 +285,15 @@ export function Reports() {
         </fieldset>
 
         <div className="report-actions">
-          <button type="button" className="btn" onClick={downloadExcel} disabled={!report || loading || Boolean(rangeError) || Boolean(saving)}>
-            {saving === "excel" ? "Preparing Excel…" : "Download Excel"}
+          <button type="button" className="btn secondary report-dl report-dl--excel" onClick={downloadExcel} disabled={!report || loading || Boolean(rangeError) || Boolean(saving)}>
+            <ExcelIcon />
+            <span>{saving === "excel" ? "Preparing Excel…" : "Download Excel"}</span>
           </button>
-          <button type="button" className="btn secondary" onClick={downloadPdf} disabled={!report || loading || Boolean(rangeError) || Boolean(saving)}>
-            {saving === "pdf" ? "Preparing PDF…" : "Download PDF"}
+          <button type="button" className="btn secondary report-dl report-dl--pdf" onClick={downloadPdf} disabled={!report || loading || Boolean(rangeError) || Boolean(saving)}>
+            <PdfIcon />
+            <span>{saving === "pdf" ? "Preparing PDF…" : "Download PDF"}</span>
           </button>
         </div>
-        <p className="report-note">Excel opens in Microsoft Excel or Google Sheets. The PDF is ready to print or send.</p>
         {error && <p className="form-error">{error}</p>}
       </section>
 
@@ -407,5 +423,27 @@ function SummaryTable({ report }) {
         </table>
       </div>
     </>
+  );
+}
+
+function ExcelIcon() {
+  return (
+    <svg className="report-dl__icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="currentColor" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" opacity="0.18" />
+      <path fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" />
+      <path fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" d="M14 2v6h6" />
+      <path fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" d="M8.2 17.2 11 12.2l2.8 5M9 15.2h4" />
+    </svg>
+  );
+}
+
+function PdfIcon() {
+  return (
+    <svg className="report-dl__icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="currentColor" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" opacity="0.18" />
+      <path fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Z" />
+      <path fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" d="M14 2v6h6" />
+      <path fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" d="M8.5 12.5h2.2a1.4 1.4 0 0 1 0 2.8H8.5v-4.3Zm0 2.8V17M13.2 17v-4.5h1.3a1.6 1.6 0 0 1 0 3.2H13.2Zm4.3-4.5v4.5" />
+    </svg>
   );
 }

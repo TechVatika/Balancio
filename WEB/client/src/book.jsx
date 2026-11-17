@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { logEvent } from "./activityLog.js";
 import { api, setActiveBookIdSource } from "./api.js";
 
 const BookContext = createContext(null);
@@ -37,6 +38,7 @@ export function BookProvider({ children }) {
   }, []);
 
   const setBookId = useCallback((next) => {
+    const previous = bookIdRef.current;
     bookIdRef.current = next;
     setBookIdState(next);
     try {
@@ -45,7 +47,15 @@ export function BookProvider({ children }) {
       // Private browsing or disabled storage — the switch still works for this tab.
     }
     setTick((n) => n + 1);
-  }, []);
+    if (previous !== next) {
+      const name = books?.find((book) => book.id === next)?.name;
+      logEvent(
+        "book.switch",
+        name ? `Switched to book “${name}”.` : `Switched to book #${next}.`,
+        { fromBookId: previous, toBookId: next, name: name || null },
+      );
+    }
+  }, [books]);
 
   useEffect(() => {
     refreshBooks().catch(() => {

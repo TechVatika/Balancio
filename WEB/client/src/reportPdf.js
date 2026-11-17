@@ -4,12 +4,14 @@ import { formatRupee } from "../../shared/money.js";
 import { formatDisplayDate } from "../../shared/statement.js";
 import { logoDataUrl, reportFileName, rupee, saveFile } from "./reportDownload.js";
 
-const FONT = "SourceSans";
+const FONT = "IBMPlex";
+const DISPLAY = "SourceSerif";
 const GUJARATI_FONT = "NotoSerifGujarati";
 const FACES = [
-  ["SourceSans3-Regular.ttf", FONT, "normal"],
-  ["SourceSans3-Bold.ttf", FONT, "bold"],
-  ["SourceSans3-It.ttf", FONT, "italic"],
+  ["IBMPlexSans-Regular.ttf", FONT, "normal"],
+  ["IBMPlexSans-Medium.ttf", FONT, "medium"],
+  ["IBMPlexSans-Bold.ttf", FONT, "bold"],
+  ["SourceSerif4-Bold.ttf", DISPLAY, "bold"],
   ["NotoSerifGujarati-Regular.ttf", GUJARATI_FONT, "normal"],
   ["NotoSerifGujarati-Bold.ttf", GUJARATI_FONT, "bold"],
 ];
@@ -21,11 +23,14 @@ function hasGujarati(text) {
 }
 
 const NAVY = [18, 34, 54];
+const TAG = [183, 195, 209];
 const MUTED = [91, 107, 124];
 const LINE = [217, 225, 234];
 const PAPER = [244, 247, 251];
 const CREDIT = [6, 118, 71];
 const DEBIT = [180, 35, 24];
+const GLOW_PAD = 96;
+const LOGO_PX = 256;
 
 function money(value, empty = false) {
   return formatRupee(value, { empty });
@@ -62,19 +67,62 @@ function tone(value) {
   return rupee(value) < 0 ? DEBIT : NAVY;
 }
 
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("The Balancio logo could not be loaded."));
+    image.src = src;
+  });
+}
+
+async function brandLogo(dataUrl) {
+  const image = await loadImage(dataUrl);
+  const canvas = document.createElement("canvas");
+  const side = LOGO_PX + GLOW_PAD * 2;
+  canvas.width = side;
+  canvas.height = side;
+  const ctx = canvas.getContext("2d");
+  const origin = GLOW_PAD;
+  const paintGlow = (blur, alpha) => {
+    ctx.save();
+    ctx.shadowColor = `rgba(255, 255, 255, ${alpha})`;
+    ctx.shadowBlur = blur;
+    ctx.drawImage(image, origin, origin, LOGO_PX, LOGO_PX);
+    ctx.restore();
+  };
+  // Match .mark drop-shadow(0 0 2px …) drop-shadow(0 0 7px …) on the navy rail.
+  paintGlow(12, 0.95);
+  paintGlow(43, 0.8);
+  ctx.drawImage(image, origin, origin, LOGO_PX, LOGO_PX);
+  return canvas.toDataURL("image/png");
+}
+
+function placeBrandLogo(doc, logo, x, y, size) {
+  const scale = size / LOGO_PX;
+  const full = (LOGO_PX + GLOW_PAD * 2) * scale;
+  const pad = GLOW_PAD * scale;
+  doc.addImage(logo, "PNG", x - pad, y - pad, full, full);
+}
+
+function drawBrandLockup(doc, logo, x, y, size) {
+  placeBrandLogo(doc, logo, x, y, size);
+  const textX = x + size + size * 0.23;
+  doc.setTextColor(255, 255, 255);
+  doc.setFont(DISPLAY, "bold");
+  doc.setFontSize(size * 1.2);
+  doc.text("Balancio", textX, y + size * 0.42);
+  doc.setFont(FONT, "medium");
+  doc.setFontSize(size * 0.65);
+  doc.setTextColor(...TAG);
+  doc.text("Your money, in balance.", textX, y + size * 0.84);
+}
+
 function drawBanner(doc, report, logo) {
   const width = doc.internal.pageSize.getWidth();
   doc.setFillColor(...NAVY);
   doc.rect(0, 0, width, 28, "F");
-  doc.addImage(logo, "PNG", 10, 5, 18, 18);
-  doc.setTextColor(255, 255, 255);
-  doc.setFont(FONT, "bold");
-  doc.setFontSize(18);
-  doc.text("Balancio", 32, 13);
-  doc.setFont(FONT, "normal");
-  doc.setFontSize(10);
-  doc.setTextColor(213, 221, 230);
-  doc.text("Your money, in balance.", 32, 20);
+  drawBrandLockup(doc, logo, 10, 5, 18);
 
   doc.setTextColor(...NAVY);
   doc.setFont(FONT, "bold");
@@ -142,11 +190,9 @@ function finish(doc, report, logo) {
   for (let page = 1; page <= pages; page += 1) {
     doc.setPage(page);
     if (page > 1) {
-      doc.addImage(logo, "PNG", 14, 3.5, 7, 7);
-      doc.setFont(FONT, "bold");
-      doc.setFontSize(9);
-      doc.setTextColor(...NAVY);
-      doc.text(`Balancio  ·  ${report.title}`, 23, 8);
+      doc.setFillColor(...NAVY);
+      doc.rect(0, 0, width, 16, "F");
+      drawBrandLockup(doc, logo, 14, 3, 10);
     }
     doc.setFont(FONT, "normal");
     doc.setFontSize(8);
@@ -158,7 +204,7 @@ function finish(doc, report, logo) {
 
 function statementTable(doc, report) {
   if (!report.rows.length) {
-    doc.setFont(FONT, "italic");
+    doc.setFont(FONT, "normal");
     doc.setFontSize(11);
     doc.setTextColor(...MUTED);
     doc.text("No lines in this period.", 14, 84);
@@ -180,7 +226,7 @@ function statementTable(doc, report) {
   const count = report.totals.count;
   autoTable(doc, {
     startY: 80,
-    margin: { top: 16, right: 14, bottom: 16, left: 14 },
+    margin: { top: 20, right: 14, bottom: 16, left: 14 },
     head: [["Date", "Description", "Credit", "Debit", "Balance"]],
     body,
     foot: [[
@@ -192,7 +238,7 @@ function statementTable(doc, report) {
     ]],
     theme: "plain",
     styles: { font: FONT, fontSize: 9, textColor: NAVY, cellPadding: { top: 2.4, right: 2, bottom: 2.4, left: 2 }, lineColor: LINE, lineWidth: 0.1 },
-    headStyles: { fillColor: NAVY, textColor: 255, fontStyle: "bold", fontSize: 8 },
+    headStyles: { fillColor: NAVY, textColor: 255, fontStyle: "bold", fontSize: 10 },
     footStyles: { fillColor: PAPER, textColor: NAVY, fontStyle: "bold" },
     columnStyles: {
       0: { cellWidth: 24 },
@@ -207,7 +253,7 @@ function statementTable(doc, report) {
       paintScript(data);
       if (data.section === "body" && report.showStatementBalance && data.row.index === 0) {
         data.cell.styles.textColor = MUTED;
-        data.cell.styles.fontStyle = "italic";
+        data.cell.styles.fontStyle = "normal";
       }
     },
   });
@@ -215,7 +261,7 @@ function statementTable(doc, report) {
 
 function summaryTable(doc, report) {
   if (!report.months.length) {
-    doc.setFont(FONT, "italic");
+    doc.setFont(FONT, "normal");
     doc.setFontSize(11);
     doc.setTextColor(...MUTED);
     doc.text("No lines in this period.", 14, 84);
@@ -231,7 +277,7 @@ function summaryTable(doc, report) {
   ]);
   autoTable(doc, {
     startY: 80,
-    margin: { top: 16, right: 14, bottom: 18, left: 14 },
+    margin: { top: 20, right: 14, bottom: 18, left: 14 },
     head: [["Month", "In", "Out", "Net", "Balance", "Entries"]],
     body,
     foot: [[
@@ -244,7 +290,7 @@ function summaryTable(doc, report) {
     ]],
     theme: "plain",
     styles: { font: FONT, fontSize: 9, textColor: NAVY, cellPadding: { top: 2.6, right: 2, bottom: 2.6, left: 2 }, lineColor: LINE, lineWidth: 0.1 },
-    headStyles: { fillColor: NAVY, textColor: 255, fontStyle: "bold", fontSize: 8 },
+    headStyles: { fillColor: NAVY, textColor: 255, fontStyle: "bold", fontSize: 10 },
     footStyles: { fillColor: PAPER, textColor: NAVY, fontStyle: "bold" },
     columnStyles: {
       0: { cellWidth: 36 },
@@ -261,7 +307,7 @@ function summaryTable(doc, report) {
     ? "Balance is where the book stood at the end of each month. The total balance is the book at the end of the period."
     : "In and out follow the lines you included. Balance is the book at the end of that month.";
   const y = doc.lastAutoTable.finalY + 8;
-  doc.setFont(FONT, "italic");
+  doc.setFont(FONT, "normal");
   doc.setFontSize(8);
   doc.setTextColor(...MUTED);
   doc.text(note, 14, Math.min(y, doc.internal.pageSize.getHeight() - 16), { maxWidth: doc.internal.pageSize.getWidth() - 28 });
@@ -270,7 +316,7 @@ function summaryTable(doc, report) {
 export async function pdfBytes(report) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   await useRupeeFont(doc);
-  const logo = await logoDataUrl();
+  const logo = await brandLogo(await logoDataUrl());
   doc.setProperties({
     title: `Balancio ${report.title}`,
     subject: `${report.period}. ${report.included}.`,

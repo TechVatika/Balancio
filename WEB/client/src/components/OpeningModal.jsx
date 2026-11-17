@@ -42,8 +42,8 @@ export function OpeningModal({ openingBalance, onClose }) {
   }
 
   return (
-    <div className="modal-back" onMouseDown={onClose}>
-      <form className="modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={onSubmit}>
+    <div className="modal-back">
+      <form className="modal" onSubmit={onSubmit}>
         <p className="eyebrow">Before the first entry</p>
         <h2>Opening balance</h2>
         <p className="modal-copy">This is the balance already on hand before any line in Balancio. Every later balance starts from here.</p>

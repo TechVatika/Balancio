@@ -51,8 +51,8 @@ export function PasteModal({ onClose, onSaved }) {
   const blocked = parsed.errors.length > 0 || parsed.rows.length === 0;
 
   return (
-    <div className="modal-back" onMouseDown={onClose}>
-      <form className="modal wide" onMouseDown={(event) => event.stopPropagation()} onSubmit={onSubmit}>
+    <div className="modal-back">
+      <form className="modal wide" onSubmit={onSubmit}>
         <p className="eyebrow">Bring a statement in</p>
         <h2>Paste entries</h2>
         <p className="modal-copy">
