@@ -1,17 +1,23 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toPaise } from "../../../shared/money.js";
 import { api } from "../api.js";
 import { useBook } from "../book.jsx";
+import { isSaveShortcut } from "../shortcuts.js";
 
 export function OpeningModal({ openingBalance, onClose }) {
   const { refresh, notify } = useBook();
   const [amount, setAmount] = useState(openingBalance);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const formRef = useRef(null);
 
   useEffect(() => {
     function onKey(event) {
       if (event.key === "Escape") onClose();
+      if (isSaveShortcut(event)) {
+        event.preventDefault();
+        formRef.current?.requestSubmit();
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -19,6 +25,7 @@ export function OpeningModal({ openingBalance, onClose }) {
 
   async function onSubmit(event) {
     event.preventDefault();
+    if (saving) return;
     const trimmed = amount.trim();
     if (!trimmed) {
       setError("Enter an opening balance. Use 0 if the book starts empty.");
@@ -43,7 +50,7 @@ export function OpeningModal({ openingBalance, onClose }) {
 
   return (
     <div className="modal-back">
-      <form className="modal" onSubmit={onSubmit}>
+      <form ref={formRef} className="modal" onSubmit={onSubmit}>
         <p className="eyebrow">Before the first entry</p>
         <h2>Opening balance</h2>
         <p className="modal-copy">This is the balance already on hand before any line in Balancio. Every later balance starts from here.</p>

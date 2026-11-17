@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { paiseToAmount, toPaise } from "../../../shared/money.js";
 import { api } from "../api.js";
 import { useBook } from "../book.jsx";
+import { isSaveShortcut } from "../shortcuts.js";
 import { formatDisplayDate } from "../../../shared/statement.js";
 
 function todayIso() {
@@ -21,10 +22,15 @@ export function EntryModal({ entry, onClose, onSaved }) {
   const [amount, setAmount] = useState(startingAmount);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const formRef = useRef(null);
 
   useEffect(() => {
     function onKey(event) {
       if (event.key === "Escape") onClose();
+      if (isSaveShortcut(event)) {
+        event.preventDefault();
+        formRef.current?.requestSubmit();
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -32,6 +38,7 @@ export function EntryModal({ entry, onClose, onSaved }) {
 
   async function onSubmit(event) {
     event.preventDefault();
+    if (saving) return;
     const paise = toPaise(amount);
     if (!description.trim()) {
       setError("Enter a description.");
@@ -62,7 +69,7 @@ export function EntryModal({ entry, onClose, onSaved }) {
 
   return (
     <div className="modal-back">
-      <form className="modal" onSubmit={onSubmit}>
+      <form ref={formRef} className="modal" onSubmit={onSubmit}>
         <p className="eyebrow">{entry ? "Edit line" : "New line"}</p>
         <h2>{entry ? "Update this entry" : "Add an entry"}</h2>
         <label className="field">

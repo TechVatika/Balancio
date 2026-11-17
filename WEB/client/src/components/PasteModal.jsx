@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatRupee } from "../../../shared/money.js";
 import { formatDisplayDate, parseStatement } from "../../../shared/statement.js";
 import { api } from "../api.js";
 import { useBook } from "../book.jsx";
+import { isSaveShortcut } from "../shortcuts.js";
 
 function exampleText() {
   const now = new Date();
@@ -23,11 +24,16 @@ export function PasteModal({ onClose, onSaved }) {
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const formRef = useRef(null);
   const parsed = useMemo(() => parseStatement(text), [text]);
 
   useEffect(() => {
     function onKey(event) {
       if (event.key === "Escape") onClose();
+      if (isSaveShortcut(event)) {
+        event.preventDefault();
+        formRef.current?.requestSubmit();
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -35,7 +41,7 @@ export function PasteModal({ onClose, onSaved }) {
 
   async function onSubmit(event) {
     event.preventDefault();
-    if (!parsed.rows.length || parsed.errors.length) return;
+    if (saving || !parsed.rows.length || parsed.errors.length) return;
     setSaving(true);
     setError("");
     try {
@@ -52,7 +58,7 @@ export function PasteModal({ onClose, onSaved }) {
 
   return (
     <div className="modal-back">
-      <form className="modal wide" onSubmit={onSubmit}>
+      <form ref={formRef} className="modal wide" onSubmit={onSubmit}>
         <p className="eyebrow">Bring a statement in</p>
         <h2>Paste entries</h2>
         <p className="modal-copy">

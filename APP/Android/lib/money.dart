@@ -35,9 +35,19 @@ String todayIso() {
 String displayDate(String iso) {
   final parts = iso.split('-');
   if (parts.length != 3) return iso;
-  final year = parts[0];
-  final month = (int.tryParse(parts[1]) ?? 0).toString().padLeft(2, '0');
-  final day = (int.tryParse(parts[2]) ?? 0).toString().padLeft(2, '0');
-  if (month == '00' || day == '00') return iso;
-  return '$day-$month-$year';
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  final month = int.tryParse(parts[1]) ?? 1;
+  final day = int.tryParse(parts[2]) ?? 1;
+  return '$day ${months[month - 1]} ${parts[0]}';
+}
+
+/// Indian financial year (1 Apr – 31 Mar). Start year 2026 means FY 2026-27.
+int fyStartFromDate([DateTime? date]) {
+  final d = date ?? DateTime.now();
+  return d.month >= 4 ? d.year : d.year - 1;
+}
+
+String fyLabel(int startYear) {
+  final end = (startYear + 1) % 100;
+  return 'FY $startYear-${end.toString().padLeft(2, '0')}';
 }

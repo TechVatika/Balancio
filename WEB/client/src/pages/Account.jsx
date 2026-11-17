@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatRupee } from "../../../shared/money.js";
 import { api } from "../api.js";
 import { useAuth } from "../auth.jsx";
 import { useBook } from "../book.jsx";
 import { askConfirm, askPrompt, flash } from "../dialog.js";
+import { isSaveShortcut } from "../shortcuts.js";
 import { formatDisplayDate } from "../../../shared/statement.js";
 
 export function Account() {
@@ -73,9 +74,22 @@ function ChangePasswordForm() {
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
   const [saving, setSaving] = useState(false);
+  const formRef = useRef(null);
+
+  useEffect(() => {
+    function onKey(event) {
+      if (!isSaveShortcut(event)) return;
+      if (!formRef.current?.contains(event.target)) return;
+      event.preventDefault();
+      formRef.current.requestSubmit();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   async function onSubmit(event) {
     event.preventDefault();
+    if (saving) return;
     setError("");
     setDone(false);
     if (newPassword !== confirm) {
@@ -97,7 +111,7 @@ function ChangePasswordForm() {
   }
 
   return (
-    <form className="form-grid" onSubmit={onSubmit}>
+    <form ref={formRef} className="form-grid" onSubmit={onSubmit}>
       <label className="field">
         <span>Current password</span>
         <input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required />

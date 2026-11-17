@@ -5,6 +5,7 @@ export const SHORTCUTS = [
   { keys: "P", action: "Paste entries (ledger)" },
   { keys: "/", action: "Focus search (ledger)" },
   { keys: "B", action: "Opening balance" },
+  { keys: "Shift+S", action: "Save the open form" },
   { keys: "G then O", action: "Go to Overview" },
   { keys: "G then M", action: "Go to Month ledger" },
   { keys: "G then Y", action: "Go to Year ledger" },
@@ -17,6 +18,20 @@ export const SHORTCUTS = [
 export function isTypingTarget(target) {
   if (!(target instanceof HTMLElement)) return false;
   return Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
+}
+
+/**
+ * Shift+S saves the open form (works while typing too).
+ * Avoid Ctrl/⌘+S — browsers already use those for “Save page”.
+ */
+export function isSaveShortcut(event) {
+  return (
+    event.shiftKey
+    && !event.ctrlKey
+    && !event.metaKey
+    && !event.altKey
+    && event.key.toLowerCase() === "s"
+  );
 }
 
 export function plainKey(event) {
